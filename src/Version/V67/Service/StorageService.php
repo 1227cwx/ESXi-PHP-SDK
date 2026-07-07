@@ -110,6 +110,10 @@ final class StorageService extends AbstractService
             throw new \InvalidArgumentException('Invalid parameter: sourceName and destinationName cannot be the same.');
         }
 
+        if ($this->shouldCopyAsVirtualDisk($sourceName, $destinationName, $options)) {
+            return $this->copyVirtualDisk($sourceName, $destinationName, $force, $wait, $options);
+        }
+
         $task = $this->client->copyDatastoreFileTask->execute(
             $this->client->service('fileManager'),
             $sourceName,
@@ -123,6 +127,38 @@ final class StorageService extends AbstractService
             'source' => $sourceName,
             'destination' => $destinationName,
             'force' => $force,
+        ]);
+    }
+
+    /** @internal */
+    public function copyVirtualDisk(string $sourceName, string $destinationName, bool $force = false, bool $wait = true, array $options = []): array
+    {
+        $this->assertDatastorePath($sourceName, 'sourceName');
+        $this->assertDatastorePath($destinationName, 'destinationName');
+        if ($sourceName === $destinationName) {
+            throw new \InvalidArgumentException('Invalid parameter: sourceName and destinationName cannot be the same.');
+        }
+
+        $destinationSpec = $options['destination_spec'] ?? $options['dest_spec'] ?? null;
+        if (is_array($destinationSpec)) {
+            $destinationSpec = DataObject::typed('FileBackedVirtualDiskSpec', $destinationSpec);
+        }
+
+        $task = $this->client->copyVirtualDiskTask->execute(
+            $this->client->service('virtualDiskManager'),
+            $sourceName,
+            $destinationName,
+            $this->optionalMor($options['source_datacenter'] ?? null, 'Datacenter'),
+            $this->optionalMor($options['destination_datacenter'] ?? null, 'Datacenter'),
+            $destinationSpec,
+            $force
+        );
+
+        return $this->taskResult($task, $wait, [
+            'source' => $sourceName,
+            'destination' => $destinationName,
+            'force' => $force,
+            'virtual_disk' => true,
         ]);
     }
 
@@ -221,6 +257,16 @@ final class StorageService extends AbstractService
         if (trim($path) === '' || preg_match('/^\[[^\]]+]($|\s+.+)/', $path) !== 1) {
             throw new \InvalidArgumentException("Invalid parameter: {$key} must be a datastore path like \"[datastore1] folder/file\".");
         }
+    }
+
+    private function shouldCopyAsVirtualDisk(string $sourceName, string $destinationName, array $options): bool
+    {
+        if (array_key_exists('virtual_disk', $options)) {
+            return (bool) $options['virtual_disk'];
+        }
+
+        return str_ends_with(strtolower($sourceName), '.vmdk')
+            && str_ends_with(strtolower($destinationName), '.vmdk');
     }
 
     private function optionalMor(mixed $value, string $type): ?Mor

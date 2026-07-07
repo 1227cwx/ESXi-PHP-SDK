@@ -181,8 +181,16 @@ final class VpsService extends AbstractService
             $capacityInKb = $this->positiveInt($params['disk_gb'], 'disk_gb') * 1024 * 1024;
         }
 
-        $config = DataObject::typed('VirtualMachineConfigSpec', [
+        $configSpec = [
             'name' => $name,
+        ];
+        if (isset($params['hardware_version']) || isset($params['vmx_version']) || isset($params['version'])) {
+            $configSpec['version'] = $this->requiredString([
+                'version' => $params['hardware_version'] ?? $params['vmx_version'] ?? $params['version'],
+            ], 'version');
+        }
+
+        $configSpec += [
             'guestId' => $params['guest_id'] ?? 'otherGuest64',
             'files' => DataObject::typed('VirtualMachineFileInfo', [
                 'vmPathName' => $vmPath,
@@ -198,7 +206,9 @@ final class VpsService extends AbstractService
                 (bool) ($params['thin_provision'] ?? true),
                 !$useExistingDisk
             ),
-        ]);
+        ];
+
+        $config = DataObject::typed('VirtualMachineConfigSpec', $configSpec);
 
         $task = $this->client->createVMTask->execute(
             $this->morOption($params['folder'] ?? null, 'Folder', 'ha-folder-vm'),

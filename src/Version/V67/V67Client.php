@@ -40,6 +40,7 @@ use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\ReconfigVMTask;
 use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\ResetVMTask;
 use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\ShutdownGuest;
 use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\SuspendVMTask;
+use Cwx1227\Esxi\Version\V67\Operation\VirtualDiskManager\CopyVirtualDiskTask;
 use Cwx1227\Esxi\Version\V67\Service\AuthService;
 use Cwx1227\Esxi\Version\V67\Service\HostService;
 use Cwx1227\Esxi\Version\V67\Service\InventoryService;
@@ -81,6 +82,7 @@ final class V67Client
     public readonly RemovePortGroup $removePortGroup;
 
     public readonly CopyDatastoreFileTask $copyDatastoreFileTask;
+    public readonly CopyVirtualDiskTask $copyVirtualDiskTask;
     public readonly MakeDirectory $makeDirectory;
     public readonly SearchDatastoreTask $searchDatastoreTask;
     public readonly SearchDatastoreSubFoldersTask $searchDatastoreSubFoldersTask;
@@ -129,6 +131,7 @@ final class V67Client
         $this->removePortGroup = new RemovePortGroup($soap);
 
         $this->copyDatastoreFileTask = new CopyDatastoreFileTask($soap);
+        $this->copyVirtualDiskTask = new CopyVirtualDiskTask($soap);
         $this->makeDirectory = new MakeDirectory($soap);
         $this->searchDatastoreTask = new SearchDatastoreTask($soap);
         $this->searchDatastoreSubFoldersTask = new SearchDatastoreSubFoldersTask($soap);
