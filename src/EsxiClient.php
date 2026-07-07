@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi;
+namespace Cwx1227\Esxi;
 
-use WebmanVps\Esxi\Version\V67\V67Client;
+use Cwx1227\Esxi\Version\V67\V67Client;
 
 final class EsxiClient
 {

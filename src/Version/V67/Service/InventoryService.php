@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Version\V67\Service;
+namespace Cwx1227\Esxi\Version\V67\Service;
 
 final class InventoryService extends AbstractService
 {

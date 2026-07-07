@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Soap;
+namespace Cwx1227\Esxi\Soap;
 
-use WebmanVps\Esxi\Exception\EsxiException;
-use WebmanVps\Esxi\Http\TransportInterface;
+use Cwx1227\Esxi\Exception\EsxiException;
+use Cwx1227\Esxi\Http\TransportInterface;
 
 final class SoapExecutor
 {

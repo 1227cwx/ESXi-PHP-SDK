@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi;
+namespace Cwx1227\Esxi;
 
-use WebmanVps\Esxi\Exception\EsxiException;
-use WebmanVps\Esxi\Http\HyperfGuzzleTransport;
-use WebmanVps\Esxi\Soap\SoapExecutor;
-use WebmanVps\Esxi\Version\V67\V67Client;
+use Cwx1227\Esxi\Exception\EsxiException;
+use Cwx1227\Esxi\Http\HyperfGuzzleTransport;
+use Cwx1227\Esxi\Soap\SoapExecutor;
+use Cwx1227\Esxi\Version\V67\V67Client;
 
 final class ClientFactory
 {

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Soap;
+namespace Cwx1227\Esxi\Soap;
 
 use DOMDocument;
 use DOMElement;
-use WebmanVps\Esxi\Exception\EsxiException;
-use WebmanVps\Esxi\Exception\SoapFaultException;
+use Cwx1227\Esxi\Exception\EsxiException;
+use Cwx1227\Esxi\Exception\SoapFaultException;
 
 final class SoapXmlParser
 {

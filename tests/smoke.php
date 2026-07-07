@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use WebmanVps\Esxi\EsxiClient;
+use Cwx1227\Esxi\EsxiClient;
 
 $host = getenv('ESXI_HOST');
 $user = getenv('ESXI_USER');

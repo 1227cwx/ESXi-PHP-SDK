@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Http;
+namespace Cwx1227\Esxi\Http;
 
 use GuzzleHttp\Exception\GuzzleException;
 use Hyperf\Guzzle\ClientFactory;
-use WebmanVps\Esxi\Exception\EsxiException;
+use Cwx1227\Esxi\Exception\EsxiException;
 
 final class HyperfGuzzleTransport implements TransportInterface
 {

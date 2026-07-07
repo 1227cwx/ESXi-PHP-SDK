@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Version\V67\Service;
+namespace Cwx1227\Esxi\Version\V67\Service;
 
-use WebmanVps\Esxi\Value\ManagedObjectReference as Mor;
+use Cwx1227\Esxi\Value\ManagedObjectReference as Mor;
 
 final class TaskService extends AbstractService
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Soap;
+namespace Cwx1227\Esxi\Soap;
 
 use DOMDocument;
 use DOMElement;

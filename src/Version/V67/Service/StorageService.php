@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Version\V67\Service;
+namespace Cwx1227\Esxi\Version\V67\Service;
 
-use WebmanVps\Esxi\Exception\EsxiException;
-use WebmanVps\Esxi\Value\DataObject;
-use WebmanVps\Esxi\Value\ManagedObjectReference as Mor;
+use Cwx1227\Esxi\Exception\EsxiException;
+use Cwx1227\Esxi\Value\DataObject;
+use Cwx1227\Esxi\Value\ManagedObjectReference as Mor;
 
 final class StorageService extends AbstractService
 {

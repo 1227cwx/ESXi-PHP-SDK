@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Value;
+namespace Cwx1227\Esxi\Value;
 
 final class DataObject
 {

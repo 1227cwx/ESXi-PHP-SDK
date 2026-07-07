@@ -1,7 +1,7 @@
 # ESXi 6.7 调用文档
 
 > 版本目录：`docs/6-7`  
-> 对应 PHP 命名空间：`WebmanVps\Esxi\Version\V67`
+> 对应 PHP 命名空间：`Cwx1227\Esxi\Version\V67`
 
 ## 目录
 
@@ -23,7 +23,7 @@
 ## 1. 初始化客户端
 
 ```php
-use WebmanVps\Esxi\EsxiClient;
+use Cwx1227\Esxi\EsxiClient;
 
 $client = EsxiClient::make([
     'host' => '192.168.127.106',
@@ -276,7 +276,7 @@ $result = $client->vps()->reconfigure('vps-demo-001', [
 如果需要更复杂的 ESXi 数据对象，可以传 `DataObject`：
 
 ```php
-use WebmanVps\Esxi\Value\DataObject;
+use Cwx1227\Esxi\Value\DataObject;
 
 $spec = DataObject::typed('VirtualMachineConfigSpec', [
     'annotation' => 'custom config',

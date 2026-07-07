@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Version\V67\Operation;
+namespace Cwx1227\Esxi\Version\V67\Operation;
 
-use WebmanVps\Esxi\Contract\OperationInterface;
-use WebmanVps\Esxi\Soap\SoapExecutor;
-use WebmanVps\Esxi\Soap\SoapResponse;
+use Cwx1227\Esxi\Contract\OperationInterface;
+use Cwx1227\Esxi\Soap\SoapExecutor;
+use Cwx1227\Esxi\Soap\SoapResponse;
 
 abstract class AbstractOperation implements OperationInterface
 {

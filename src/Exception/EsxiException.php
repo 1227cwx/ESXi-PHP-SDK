@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Exception;
+namespace Cwx1227\Esxi\Exception;
 
 use RuntimeException;
 

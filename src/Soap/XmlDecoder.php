@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Soap;
+namespace Cwx1227\Esxi\Soap;
 
 use DOMElement;
-use WebmanVps\Esxi\Value\ManagedObjectReference;
+use Cwx1227\Esxi\Value\ManagedObjectReference;
 
 final class XmlDecoder
 {

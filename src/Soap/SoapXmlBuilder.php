@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Soap;
+namespace Cwx1227\Esxi\Soap;
 
 use XMLWriter;
-use WebmanVps\Esxi\Value\DataObject;
-use WebmanVps\Esxi\Value\ManagedObjectReference;
+use Cwx1227\Esxi\Value\DataObject;
+use Cwx1227\Esxi\Value\ManagedObjectReference;
 
 final class SoapXmlBuilder
 {

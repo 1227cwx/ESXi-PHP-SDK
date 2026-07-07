@@ -12,12 +12,12 @@
   },
   "autoload": {
     "psr-4": {
-      "WebmanVps\\Esxi\\": "src/"
+      "Cwx1227\\Esxi\\": "src/"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "WebmanVps\\Esxi\\Tests\\": "tests/"
+      "Cwx1227\\Esxi\\Tests\\": "tests/"
     }
   }
 }

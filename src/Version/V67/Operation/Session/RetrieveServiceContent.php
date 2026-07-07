@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Version\V67\Operation\Session;
+namespace Cwx1227\Esxi\Version\V67\Operation\Session;
 
-use WebmanVps\Esxi\Value\ManagedObjectReference as Mor;
-use WebmanVps\Esxi\Version\V67\Operation\AbstractOperation;
+use Cwx1227\Esxi\Value\ManagedObjectReference as Mor;
+use Cwx1227\Esxi\Version\V67\Operation\AbstractOperation;
 
 final class RetrieveServiceContent extends AbstractOperation
 {

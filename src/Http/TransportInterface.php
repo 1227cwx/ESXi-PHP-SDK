@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WebmanVps\Esxi\Http;
+namespace Cwx1227\Esxi\Http;
 
 interface TransportInterface
 {
