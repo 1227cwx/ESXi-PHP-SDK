@@ -267,8 +267,7 @@ final class V67Client
         do {
             $info = $this->retrieveObjectProperties($task, 'Task', [
                 'info.state',
-                'info.error.localizedMessage',
-                'info.error.fault',
+                'info.error',
                 'info.result',
             ]);
 
@@ -285,7 +284,10 @@ final class V67Client
             }
 
             if ($state === 'error') {
-                $message = $info['info.error.localizedMessage'] ?? 'ESXi task failed.';
+                $error = $info['info.error'] ?? [];
+                $message = is_array($error)
+                    ? ($error['localizedMessage'] ?? 'ESXi task failed.')
+                    : 'ESXi task failed.';
                 throw new TaskFailedException((string) $message, $info);
             }
 

@@ -154,22 +154,14 @@ final class StorageService extends AbstractService
 
     private function buildSearchSpec(array $params): DataObject
     {
-        $details = $params['details'] ?? [
-            'fileSize' => true,
+        $details = array_replace([
             'fileType' => true,
+            'fileSize' => true,
             'modification' => true,
             'fileOwner' => false,
-        ];
+        ], $params['details'] ?? []);
 
-        $spec = [
-            'details' => DataObject::typed('FileQueryFlags', $details),
-            'sortFoldersFirst' => (bool) ($params['sort_folders_first'] ?? true),
-        ];
-
-        if (!empty($params['match_pattern'])) {
-            $spec['matchPattern'] = array_values((array) $params['match_pattern']);
-        }
-
+        $spec = [];
         if (!empty($params['file_types'])) {
             $query = [];
             foreach ((array) $params['file_types'] as $type) {
@@ -177,6 +169,18 @@ final class StorageService extends AbstractService
             }
             $spec['query'] = $query;
         }
+
+        $spec['details'] = DataObject::typed('FileQueryFlags', $details);
+
+        if (array_key_exists('search_case_insensitive', $params)) {
+            $spec['searchCaseInsensitive'] = (bool) $params['search_case_insensitive'];
+        }
+
+        if (!empty($params['match_pattern'])) {
+            $spec['matchPattern'] = array_values((array) $params['match_pattern']);
+        }
+
+        $spec['sortFoldersFirst'] = (bool) ($params['sort_folders_first'] ?? true);
 
         return DataObject::typed('HostDatastoreBrowserSearchSpec', $spec);
     }

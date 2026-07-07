@@ -56,7 +56,7 @@ final class TaskService extends AbstractService
             'info.queueTime',
             'info.startTime',
             'info.completeTime',
-            'info.error.localizedMessage',
+            'info.error',
             'info.result',
         ];
 

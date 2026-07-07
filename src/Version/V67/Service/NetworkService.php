@@ -45,9 +45,7 @@ final class NetworkService extends AbstractService
         }
 
         $spec = [];
-        if (isset($params['num_ports'])) {
-            $spec['numPorts'] = (int) $params['num_ports'];
-        }
+        $spec['numPorts'] = (int) ($params['num_ports'] ?? 128);
         if (isset($params['mtu'])) {
             $spec['mtu'] = (int) $params['mtu'];
         }
@@ -133,9 +131,7 @@ final class NetworkService extends AbstractService
                 'forged_transmits' => 'forgedTransmits',
             ] as $input => $apiName) {
                 if (array_key_exists($input, $security)) {
-                    $securityPolicy[$apiName] = DataObject::typed('BoolPolicy', [
-                        'value' => (bool) $security[$input],
-                    ]);
+                    $securityPolicy[$apiName] = (bool) $security[$input];
                 }
             }
             if ($securityPolicy !== []) {
@@ -148,14 +144,13 @@ final class NetworkService extends AbstractService
             $shaping['enabled'] = true;
             $shaping['average_bandwidth'] = (int) $params['bandwidth_limit_bps'];
             $shaping['peak_bandwidth'] = (int) $params['bandwidth_limit_bps'];
+            $shaping['burst_size'] = (int) ($params['burst_size'] ?? 1024 * 1024);
         }
 
         if ($shaping !== []) {
             $shapingPolicy = [];
             if (array_key_exists('enabled', $shaping)) {
-                $shapingPolicy['enabled'] = DataObject::typed('BoolPolicy', [
-                    'value' => (bool) $shaping['enabled'],
-                ]);
+                $shapingPolicy['enabled'] = (bool) $shaping['enabled'];
             }
 
             foreach ([
@@ -164,9 +159,7 @@ final class NetworkService extends AbstractService
                 'burst_size' => 'burstSize',
             ] as $input => $apiName) {
                 if (array_key_exists($input, $shaping)) {
-                    $shapingPolicy[$apiName] = DataObject::typed('LongPolicy', [
-                        'value' => (int) $shaping[$input],
-                    ]);
+                    $shapingPolicy[$apiName] = (int) $shaping[$input];
                 }
             }
 
@@ -179,7 +172,7 @@ final class NetworkService extends AbstractService
             'name' => (string) $params['name'],
             'vlanId' => (int) ($params['vlan_id'] ?? 0),
             'vswitchName' => (string) $params['vswitch'],
-            'policy' => $policy === [] ? null : DataObject::typed('HostNetworkPolicy', $policy),
+            'policy' => DataObject::typed('HostNetworkPolicy', $policy),
         ]);
     }
 }
