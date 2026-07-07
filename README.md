@@ -1,23 +1,58 @@
-# 1227cwx/esxi-php-sdk
+# 🚀 1227cwx/esxi-php-sdk
 
-PHP Composer 包，用于直接对接 **单台 ESXi 6.7** 的 `vim25` SOAP API。
+> 面向 PHP 应用的 VMware ESXi SDK。当前已实现 **ESXi 6.7 单机节点** 的 vim25 SOAP 基础管理能力。
 
-> 适用于 webman、ThinkPHP、Laravel、普通 PHP CLI 等任意 Composer 项目。
+![Packagist Version](https://img.shields.io/packagist/v/1227cwx/esxi-php-sdk?style=flat-square&label=packagist)
+![PHP](https://img.shields.io/badge/php-%3E%3D8.2-777BB4?style=flat-square&logo=php&logoColor=white)
+![ESXi](https://img.shields.io/badge/ESXi-6.7-607078?style=flat-square&logo=vmware&logoColor=white)
+![hyperf/guzzle](https://img.shields.io/badge/hyperf%2Fguzzle-%5E3.2-44cc11?style=flat-square)
+![ext-dom](https://img.shields.io/badge/ext--dom-required-blue?style=flat-square)
+![ext-libxml](https://img.shields.io/badge/ext--libxml-required-blue?style=flat-square)
+![ext-xmlwriter](https://img.shields.io/badge/ext--xmlwriter-required-blue?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
-## 支持能力
+## ✨ 项目介绍
 
-- ESXi 登录/退出、版本信息读取
-- VM/VPS 列表、配置读取、监控摘要读取
-- VM 创建、CPU/内存改配
-- VM 开机、关机、重启、挂起、Guest OS 关机/重启
-- Host 监控摘要读取
-- 标准 vSwitch、PortGroup、物理网卡、VMkernel 网卡读取
-- 创建/删除 vSwitch
-- 创建/更新/删除 PortGroup
-- PortGroup VLAN 与安全策略：`allowPromiscuous`、`macChanges`、`forgedTransmits`
-- VM 网卡绑定到指定 PortGroup
+`1227cwx/esxi-php-sdk` 是一个独立 Composer 包，用于在 PHP 应用中直接管理单台 ESXi 主机。
 
-## 安装
+适用场景：
+
+- webman
+- ThinkPHP
+- Hyperf
+- Laravel
+- 普通 PHP CLI
+- 其他 Composer 项目
+
+> [!NOTE]
+> 当前版本基于单机 ESXi 6.7 的 `/sdk` vim25 SOAP API，不依赖 vCenter。
+
+## 🧩 运行环境
+
+| 项目 | 要求 |
+|---|---|
+| PHP | `>= 8.2` |
+| ESXi | 当前支持 `6.7` |
+| Composer | 建议 Composer 2.x |
+| HTTPS Client | `hyperf/guzzle ^3.2` |
+| PHP 扩展 | `ext-dom`、`ext-libxml`、`ext-xmlwriter` |
+
+> [!IMPORTANT]
+> 运行环境不能低于 **PHP 8.2**。本包不依赖 `ext-soap`，也不直接依赖 `ext-curl`。
+
+## 📦 使用的依赖
+
+| 依赖 | 版本 | 作用 |
+|---|---:|---|
+| `hyperf/guzzle` | `^3.2` | HTTPS 请求客户端，自动适配 Swoole 协程和非协程环境 |
+| `ext-dom` | PHP 扩展 | 解析 SOAP XML 响应 |
+| `ext-libxml` | PHP 扩展 | XML 底层解析支持 |
+| `ext-xmlwriter` | PHP 扩展 | 构造 SOAP XML 请求 |
+
+> [!TIP]
+> 在 Hyperf、webman、Swoole 协程环境下，`hyperf/guzzle` 会自动使用协程请求；普通 PHP CLI 或 PHP-FPM 环境下会自动走普通 Guzzle。
+
+## 📥 安装
 
 发布到 Packagist 后，直接安装：
 
@@ -32,142 +67,40 @@ composer config repositories.esxi-php-sdk path E:/webman-vps/esxi-php-sdk
 composer require 1227cwx/esxi-php-sdk:*
 ```
 
-## 快速使用
+## ⚡ 快速使用
 
-```php
-use WebmanVps\Esxi\EsxiClient;
+当前版本调用文档：
 
-$client = EsxiClient::make([
-    'host' => '192.168.127.106',
-    'username' => 'root',
-    'password' => 'password',
-    'version' => '67',
-    'ssl_verify' => false, // 测试环境自签证书
-]);
+- 👉 [ESXi 6.7 调用文档](docs/6-7/README.md)
 
-$about = $client->about();
-$vms = $client->vps()->list();
-$metrics = $client->monitor()->vm('Ubuntu18');
+## 🧱 架构设计
 
-$client->vps()->powerOn('Ubuntu18');
-$client->vps()->shutdownGuest('Ubuntu18'); // 依赖 VMware Tools
-$client->vps()->powerOff('Ubuntu18');      // 强制断电
-
-$client->logout();
+```text
+用户代码
+  -> Version Client
+  -> Service 层
+  -> Operation 层
+  -> SoapExecutor / Transport
+  -> ESXi /sdk
 ```
 
-## 创建 VPS
+- **Service 层**：对外业务 API，负责参数校验、业务编排、Task 等待和统一返回。
+- **Operation 层**：ESXi 原始 SOAP 接口的一对一封装，按需增加。
+- **Transport 层**：统一使用 `hyperf/guzzle` 发送 HTTPS 请求。
 
-```php
-$client->vps()->create([
-    'name' => 'vps-demo-001',
-    'datastore' => 'datastore1',
-    'network' => 'VM Network',      // PortGroup 名称
-    'num_cpus' => 2,
-    'memory_mb' => 2048,
-    'disk_gb' => 40,
-    'guest_id' => 'ubuntu64Guest',
-    'adapter_type' => 'vmxnet3',
-]);
-```
+> [!IMPORTANT]
+> 用户业务代码应优先调用 Service 层，例如 `$client->vps()`、`$client->network()`、`$client->host()`、`$client->monitor()`，不要直接拼 SOAP XML。
 
-默认使用单机 ESXi 的常见对象：
+## 🌐 版本规划
 
-- VM Folder：`ha-folder-vm`
-- Resource Pool：`ha-root-pool`
-- Host：`ha-host`
+| ESXi 版本 | 调用文档 | PHP 命名空间 | 状态 |
+|---|---|---|---|
+| 6.7 | [docs/6-7](docs/6-7/README.md) | `Version\V67` | 已支持基础功能 |
+| 8.0 | `docs/8-0` | `Version\V80` | 规划中 |
 
-如果你的环境不同，可以传：
+> [!TIP]
+> 对外版本参数使用 `67`、`80` 这种短版本号；PHP 命名空间使用 `V67`、`V80`，避免使用不合法的 `6-7` 作为 namespace。
 
-```php
-'folder' => ['type' => 'Folder', 'value' => '...'],
-'resource_pool' => ['type' => 'ResourcePool', 'value' => '...'],
-'host' => ['type' => 'HostSystem', 'value' => '...'],
-```
+## 📄 License
 
-## 修改配置
-
-```php
-// 改 CPU/内存
-$client->vps()->resize('vps-demo-001', [
-    'cpu' => 4,
-    'memory_mb' => 4096,
-]);
-
-// 原始 ConfigSpec 能力
-$client->vps()->reconfigure('vps-demo-001', [
-    'annotation' => 'created by 1227cwx/esxi-php-sdk',
-]);
-```
-
-## VPC/局域网隔离逻辑
-
-ESXi 单机没有云厂商意义上的 VPC，但可以通过 **PortGroup + VLAN** 做基础二层隔离：
-
-```php
-// 创建一个 PortGroup，VLAN 100
-$client->network()->createPortGroup([
-    'name' => 'vpc-100',
-    'vswitch' => 'vSwitch0',
-    'vlan_id' => 100,
-    'security' => [
-        'allow_promiscuous' => false,
-        'mac_changes' => false,
-        'forged_transmits' => false,
-    ],
-]);
-
-// 创建 VPS 时绑定到同一个 PortGroup
-$client->vps()->create([
-    'name' => 'vps-a',
-    'datastore' => 'datastore1',
-    'network' => 'vpc-100',
-    'num_cpus' => 1,
-    'memory_mb' => 1024,
-    'disk_gb' => 20,
-]);
-
-// 已存在 VM 换网络
-$client->vps()->setNetwork('vps-a', 'vpc-100');
-```
-
-说明：
-
-- 传同一个 `network` / PortGroup 名称，VM 会接入同一二层网络。
-- 换不同 PortGroup + 不同 VLAN，可以实现互不互通。
-- 要“能上网”，物理交换机、上联口和网关必须支持对应 VLAN。
-- ESXi 标准交换机的“安全组”能力主要是端口组安全策略；如果要按 IP/端口做防火墙，需要 NSX、上游防火墙或 guest OS 防火墙。
-
-## 网络接口
-
-```php
-$client->network()->listVirtualSwitches();
-$client->network()->listPortGroups();
-$client->network()->listPhysicalNics();
-$client->network()->listVmKernelNics();
-
-$client->network()->createVirtualSwitch([
-    'name' => 'vSwitch1',
-    'mtu' => 1500,
-    // 'pnics' => ['vmnic1'],
-]);
-
-$client->network()->removeVirtualSwitch('vSwitch1');
-```
-
-## 只读 smoke 测试
-
-```powershell
-$env:ESXI_HOST='192.168.127.106'
-$env:ESXI_USER='root'
-$env:ESXI_PASSWORD='<PASSWORD>'
-php tests/smoke.php
-Remove-Item Env:\ESXI_PASSWORD
-```
-
-## 注意
-
-- ESXi 6.7 单机没有 vCenter REST/JSON 管理接口，本包走 `/sdk` SOAP。
-- 写操作已实现，但请先在测试 VM 上验证。
-- 不要把 root 密码写入代码；建议创建专用 API 用户。
-- 生产环境建议启用证书校验或固定证书指纹。
+MIT
