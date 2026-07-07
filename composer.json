@@ -1,0 +1,23 @@
+{
+  "name": "1227cwx/esxi-php-sdk",
+  "description": "Standalone VMware ESXi 6.7 SOAP/vim25 client for PHP applications.",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.2",
+    "ext-dom": "*",
+    "ext-libxml": "*",
+    "ext-xmlwriter": "*",
+    "hyperf/guzzle": "^3.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "WebmanVps\\Esxi\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "WebmanVps\\Esxi\\Tests\\": "tests/"
+    }
+  }
+}
