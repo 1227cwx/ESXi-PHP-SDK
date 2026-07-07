@@ -143,6 +143,38 @@ final class NetworkService extends AbstractService
             }
         }
 
+        $shaping = $params['shaping'] ?? $params['bandwidth'] ?? [];
+        if (isset($params['bandwidth_limit_bps'])) {
+            $shaping['enabled'] = true;
+            $shaping['average_bandwidth'] = (int) $params['bandwidth_limit_bps'];
+            $shaping['peak_bandwidth'] = (int) $params['bandwidth_limit_bps'];
+        }
+
+        if ($shaping !== []) {
+            $shapingPolicy = [];
+            if (array_key_exists('enabled', $shaping)) {
+                $shapingPolicy['enabled'] = DataObject::typed('BoolPolicy', [
+                    'value' => (bool) $shaping['enabled'],
+                ]);
+            }
+
+            foreach ([
+                'average_bandwidth' => 'averageBandwidth',
+                'peak_bandwidth' => 'peakBandwidth',
+                'burst_size' => 'burstSize',
+            ] as $input => $apiName) {
+                if (array_key_exists($input, $shaping)) {
+                    $shapingPolicy[$apiName] = DataObject::typed('LongPolicy', [
+                        'value' => (int) $shaping[$input],
+                    ]);
+                }
+            }
+
+            if ($shapingPolicy !== []) {
+                $policy['shapingPolicy'] = DataObject::typed('HostNetworkTrafficShapingPolicy', $shapingPolicy);
+            }
+        }
+
         return DataObject::typed('HostPortGroupSpec', [
             'name' => (string) $params['name'],
             'vlanId' => (int) ($params['vlan_id'] ?? 0),

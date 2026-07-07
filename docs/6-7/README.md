@@ -11,9 +11,12 @@
 - [4. Host 宿主机服务](#4-host-宿主机服务)
 - [5. Network 网络服务](#5-network-网络服务)
 - [6. Monitor 监控服务](#6-monitor-监控服务)
-- [7. Inventory 清单服务](#7-inventory-清单服务)
-- [8. VPC / VLAN 使用建议](#8-vpc--vlan-使用建议)
-- [9. 高危操作提醒](#9-高危操作提醒)
+- [7. Storage 存储与文件服务](#7-storage-存储与文件服务)
+- [8. Task 任务查询服务](#8-task-任务查询服务)
+- [9. Log 日志查询服务](#9-log-日志查询服务)
+- [10. Inventory 清单服务](#10-inventory-清单服务)
+- [11. VPC / VLAN 使用建议](#11-vpc--vlan-使用建议)
+- [12. 高危操作提醒](#12-高危操作提醒)
 
 ---
 
@@ -56,9 +59,20 @@ $client = EsxiClient::connect('192.168.127.106', 'root', 'your-password', [
 | `auto_login` | bool | 否 | `true` | 是否创建客户端时自动登录 |
 | `locale` | string/null | 否 | `null` | 登录 locale |
 
-### 退出登录
+### 鉴权登录服务
+
+`auto_login=true` 时创建客户端会自动登录；如果关闭自动登录，可以手动调用：
 
 ```php
+$client->auth()->login();
+$session = $client->auth()->session();
+$client->auth()->logout();
+```
+
+兼容快捷方式：
+
+```php
+$client->login();
 $client->logout();
 ```
 
@@ -203,6 +217,7 @@ $result = $client->vps()->create([
 | `memory_mb` | int | 是 | - | 内存 MB |
 | `disk_gb` | int | 是 | - | 系统盘 GB |
 | `guest_id` | string | 否 | `otherGuest64` | ESXi guestId，例如 `ubuntu64Guest` |
+| `scsi_controller` | string | 否 | `lsilogic` | `lsilogic`、`lsisas`、`buslogic`、`pvscsi` |
 | `adapter_type` | string | 否 | `vmxnet3` | `vmxnet3`、`e1000`、`e1000e` |
 | `thin_provision` | bool | 否 | `true` | 是否精简置备 |
 | `vm_path` | string | 否 | 自动生成 | VMX 路径 |
@@ -318,6 +333,63 @@ $result = $client->vps()->setNetwork('vps-demo-001', 'vpc-100', [
 ]);
 ```
 
+### 3.13 VPS 状态 / 配置 / 用量
+
+```php
+$client->vps()->status('vps-demo-001');
+$client->vps()->config('vps-demo-001');
+$client->vps()->usage('vps-demo-001');
+$client->vps()->metrics('vps-demo-001');
+```
+
+### 3.14 修改 VPS 配置
+
+```php
+$client->vps()->modifyConfig('vps-demo-001', [
+    'cpu' => 4,
+    'memory_mb' => 4096,
+    'disk_gb' => 80,
+]);
+```
+
+独立快捷方法：
+
+```php
+$client->vps()->resizeDisk('vps-demo-001', 80);
+
+$client->vps()->addDisk('vps-demo-001', [
+    'disk_gb' => 100,
+    'datastore' => 'datastore1',
+]);
+
+$client->vps()->addNetwork('vps-demo-001', 'vpc-100', [
+    'adapter_type' => 'vmxnet3',
+]);
+```
+
+创建 VPS 时可选择 SCSI 控制器：
+
+```php
+$client->vps()->create([
+    'name' => 'vps-demo-002',
+    'datastore' => 'datastore1',
+    'network' => 'vpc-100',
+    'num_cpus' => 2,
+    'memory_mb' => 2048,
+    'disk_gb' => 40,
+    'scsi_controller' => 'pvscsi',
+]);
+```
+
+`scsi_controller` 支持：`lsilogic`、`lsisas`、`buslogic`、`pvscsi`。
+
+### 3.15 删除 VPS
+
+```php
+$client->vps()->delete('vps-demo-001');
+$client->vps()->destroy('vps-demo-001');
+```
+
 ---
 
 ## 4. Host 宿主机服务
@@ -380,6 +452,21 @@ $config = $client->host()->networkConfig();
 - `config.network.portgroup`
 - `config.network.pnic`
 - `config.network.vnic`
+
+### 4.5 Host 配置 / 性能 / 存储 / 任务 / 日志
+
+```php
+$client->host()->config();
+$client->host()->performance();
+$client->host()->network();
+$client->host()->virtualMachines();
+$client->host()->storage();
+$client->host()->tasks(50);
+$client->host()->logDescriptions();
+$client->host()->logs('hostd', 0, 200);
+```
+
+`performance()` 返回 CPU、内存、存储用量摘要；`logs()` 默认读取 ESXi `hostd` 日志。
 
 ---
 
@@ -487,6 +574,34 @@ $result = $client->network()->updatePortGroup([
 $result = $client->network()->removePortGroup('vpc-100');
 ```
 
+### 5.10 PortGroup 带宽限制
+
+创建或更新 PortGroup 时可以传 `bandwidth_limit_bps` 快捷设置平均/峰值带宽：
+
+```php
+$client->network()->createPortGroup([
+    'name' => 'vpc-100',
+    'vswitch' => 'vSwitch0',
+    'vlan_id' => 100,
+    'bandwidth_limit_bps' => 100 * 1000 * 1000,
+]);
+```
+
+也可以传完整 shaping 策略：
+
+```php
+$client->network()->updatePortGroup([
+    'name' => 'vpc-100',
+    'vswitch' => 'vSwitch0',
+    'shaping' => [
+        'enabled' => true,
+        'average_bandwidth' => 100 * 1000 * 1000,
+        'peak_bandwidth' => 100 * 1000 * 1000,
+        'burst_size' => 1024 * 1024,
+    ],
+]);
+```
+
 ---
 
 ## 6. Monitor 监控服务
@@ -522,9 +637,75 @@ $result = $client->monitor()->vm('Ubuntu18');
 $result = $client->monitor()->host();
 ```
 
+## 7. Storage 存储与文件服务
+
+入口：
+
+```php
+$storage = $client->storage();
+```
+
+### 7.1 存储列表 / 详情 / 用量
+
+```php
+$client->storage()->list();
+$client->storage()->info('datastore1');
+$client->storage()->usage();
+$client->storage()->usage('datastore1');
+```
+
+### 7.2 文件查询
+
+```php
+$result = $client->storage()->files('[datastore1] ISO', [
+    'recursive' => false,
+    'match_pattern' => ['*.iso'],
+    'file_types' => ['iso', 'folder'],
+]);
+```
+
+内部文件任务已实现但不作为常规业务入口暴露文档：`copyFile()`、`makeDirectory()`。
+
 ---
 
-## 7. Inventory 清单服务
+## 8. Task 任务查询服务
+
+入口：
+
+```php
+$task = $client->task();
+```
+
+### 8.1 最近任务 / 任务详情 / 等待任务
+
+```php
+$client->task()->recent(50);
+$client->task()->list(50);
+$client->task()->info('haTask-1');
+$client->task()->wait('haTask-1', 300, 1000);
+```
+
+---
+
+## 9. Log 日志查询服务
+
+入口：
+
+```php
+$logs = $client->logs();
+```
+
+### 9.1 日志描述 / 日志内容
+
+```php
+$client->logs()->descriptions();
+$client->logs()->browse('hostd', 0, 200);
+$client->host()->logs('vmkernel', 0, 200);
+```
+
+---
+
+## 10. Inventory 清单服务
 
 入口：
 
@@ -532,13 +713,13 @@ $result = $client->monitor()->host();
 $inventory = $client->inventory();
 ```
 
-### 7.1 VM 清单
+### 10.1 VM 清单
 
 ```php
 $vms = $client->inventory()->virtualMachines();
 ```
 
-### 7.2 Host 清单
+### 10.2 Host 清单
 
 ```php
 $hosts = $client->inventory()->hosts();
@@ -546,7 +727,7 @@ $hosts = $client->inventory()->hosts();
 
 ---
 
-## 8. VPC / VLAN 使用建议
+## 11. VPC / VLAN 使用建议
 
 ESXi 单机没有云厂商意义上的完整 VPC，但可以用 **PortGroup + VLAN** 实现基础二层隔离。
 
@@ -585,7 +766,7 @@ $client->vps()->setNetwork('vps-a', 'vpc-100');
 
 ---
 
-## 9. 高危操作提醒
+## 12. 高危操作提醒
 
 以下接口会修改 ESXi 环境或影响业务，请谨慎调用：
 

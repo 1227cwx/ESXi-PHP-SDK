@@ -25,6 +25,11 @@ final class MonitorService extends AbstractService
 
     public function host(mixed $host = null): array
     {
-        return $this->client->host()->metrics($host);
+        return $this->client->host()->performance($host);
+    }
+
+    public function storage(mixed $datastore = null): array
+    {
+        return $this->client->storage()->usage($datastore);
     }
 }

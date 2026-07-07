@@ -12,13 +12,20 @@ use WebmanVps\Esxi\Soap\SoapResponse;
 use WebmanVps\Esxi\Soap\XmlDecoder;
 use WebmanVps\Esxi\Value\DataObject;
 use WebmanVps\Esxi\Value\ManagedObjectReference as Mor;
+use WebmanVps\Esxi\Version\V67\Operation\Diagnostic\BrowseDiagnosticLog;
+use WebmanVps\Esxi\Version\V67\Operation\Diagnostic\QueryDescriptions;
+use WebmanVps\Esxi\Version\V67\Operation\FileManager\CopyDatastoreFileTask;
+use WebmanVps\Esxi\Version\V67\Operation\FileManager\MakeDirectory;
 use WebmanVps\Esxi\Version\V67\Operation\Folder\CreateVMTask;
 use WebmanVps\Esxi\Version\V67\Operation\Folder\RegisterVMTask;
+use WebmanVps\Esxi\Version\V67\Operation\HostDatastoreBrowser\SearchDatastoreSubFoldersTask;
+use WebmanVps\Esxi\Version\V67\Operation\HostDatastoreBrowser\SearchDatastoreTask;
 use WebmanVps\Esxi\Version\V67\Operation\HostNetwork\AddPortGroup;
 use WebmanVps\Esxi\Version\V67\Operation\HostNetwork\AddVirtualSwitch;
 use WebmanVps\Esxi\Version\V67\Operation\HostNetwork\RemovePortGroup;
 use WebmanVps\Esxi\Version\V67\Operation\HostNetwork\RemoveVirtualSwitch;
 use WebmanVps\Esxi\Version\V67\Operation\HostNetwork\UpdatePortGroup;
+use WebmanVps\Esxi\Version\V67\Operation\ManagedEntity\DestroyTask;
 use WebmanVps\Esxi\Version\V67\Operation\Property\ContinueRetrievePropertiesEx;
 use WebmanVps\Esxi\Version\V67\Operation\Property\CreateContainerView;
 use WebmanVps\Esxi\Version\V67\Operation\Property\DestroyView;
@@ -33,10 +40,14 @@ use WebmanVps\Esxi\Version\V67\Operation\VirtualMachine\ReconfigVMTask;
 use WebmanVps\Esxi\Version\V67\Operation\VirtualMachine\ResetVMTask;
 use WebmanVps\Esxi\Version\V67\Operation\VirtualMachine\ShutdownGuest;
 use WebmanVps\Esxi\Version\V67\Operation\VirtualMachine\SuspendVMTask;
+use WebmanVps\Esxi\Version\V67\Service\AuthService;
 use WebmanVps\Esxi\Version\V67\Service\HostService;
 use WebmanVps\Esxi\Version\V67\Service\InventoryService;
+use WebmanVps\Esxi\Version\V67\Service\LogService;
 use WebmanVps\Esxi\Version\V67\Service\MonitorService;
 use WebmanVps\Esxi\Version\V67\Service\NetworkService;
+use WebmanVps\Esxi\Version\V67\Service\StorageService;
+use WebmanVps\Esxi\Version\V67\Service\TaskService;
 use WebmanVps\Esxi\Version\V67\Service\VpsService;
 
 final class V67Client
@@ -61,6 +72,7 @@ final class V67Client
     public readonly SuspendVMTask $suspendVMTask;
     public readonly ShutdownGuest $shutdownGuest;
     public readonly RebootGuest $rebootGuest;
+    public readonly DestroyTask $destroyTask;
 
     public readonly AddVirtualSwitch $addVirtualSwitch;
     public readonly RemoveVirtualSwitch $removeVirtualSwitch;
@@ -68,11 +80,22 @@ final class V67Client
     public readonly UpdatePortGroup $updatePortGroup;
     public readonly RemovePortGroup $removePortGroup;
 
+    public readonly CopyDatastoreFileTask $copyDatastoreFileTask;
+    public readonly MakeDirectory $makeDirectory;
+    public readonly SearchDatastoreTask $searchDatastoreTask;
+    public readonly SearchDatastoreSubFoldersTask $searchDatastoreSubFoldersTask;
+    public readonly BrowseDiagnosticLog $browseDiagnosticLog;
+    public readonly QueryDescriptions $queryDescriptions;
+
+    private ?AuthService $authService = null;
     private ?VpsService $vpsService = null;
     private ?HostService $hostService = null;
     private ?NetworkService $networkService = null;
     private ?MonitorService $monitorService = null;
     private ?InventoryService $inventoryService = null;
+    private ?StorageService $storageService = null;
+    private ?TaskService $taskService = null;
+    private ?LogService $logService = null;
 
     public function __construct(
         private readonly SoapExecutor $soap,
@@ -97,12 +120,20 @@ final class V67Client
         $this->suspendVMTask = new SuspendVMTask($soap);
         $this->shutdownGuest = new ShutdownGuest($soap);
         $this->rebootGuest = new RebootGuest($soap);
+        $this->destroyTask = new DestroyTask($soap);
 
         $this->addVirtualSwitch = new AddVirtualSwitch($soap);
         $this->removeVirtualSwitch = new RemoveVirtualSwitch($soap);
         $this->addPortGroup = new AddPortGroup($soap);
         $this->updatePortGroup = new UpdatePortGroup($soap);
         $this->removePortGroup = new RemovePortGroup($soap);
+
+        $this->copyDatastoreFileTask = new CopyDatastoreFileTask($soap);
+        $this->makeDirectory = new MakeDirectory($soap);
+        $this->searchDatastoreTask = new SearchDatastoreTask($soap);
+        $this->searchDatastoreSubFoldersTask = new SearchDatastoreSubFoldersTask($soap);
+        $this->browseDiagnosticLog = new BrowseDiagnosticLog($soap);
+        $this->queryDescriptions = new QueryDescriptions($soap);
     }
 
     public function login(?string $locale = null): void
@@ -135,6 +166,11 @@ final class V67Client
         return $this->session;
     }
 
+    public function auth(): AuthService
+    {
+        return $this->authService ??= new AuthService($this);
+    }
+
     public function vps(): VpsService
     {
         return $this->vpsService ??= new VpsService($this);
@@ -158,6 +194,26 @@ final class V67Client
     public function inventory(): InventoryService
     {
         return $this->inventoryService ??= new InventoryService($this);
+    }
+
+    public function storage(): StorageService
+    {
+        return $this->storageService ??= new StorageService($this);
+    }
+
+    public function task(): TaskService
+    {
+        return $this->taskService ??= new TaskService($this);
+    }
+
+    public function tasks(): TaskService
+    {
+        return $this->task();
+    }
+
+    public function logs(): LogService
+    {
+        return $this->logService ??= new LogService($this);
     }
 
     public function service(string $name): Mor
@@ -296,6 +352,61 @@ final class V67Client
         }
 
         return new Mor('HostSystem', 'ha-host');
+    }
+
+    public function resolveDatastore(mixed $datastore = null): Mor
+    {
+        if ($datastore instanceof Mor) {
+            return $datastore;
+        }
+
+        if (is_array($datastore) && isset($datastore['mor'])) {
+            return Mor::from($datastore['mor'], 'Datastore');
+        }
+
+        if (is_array($datastore)) {
+            return Mor::from($datastore, 'Datastore');
+        }
+
+        if (is_string($datastore) && preg_match('/^datastore-\d+$/', $datastore) === 1) {
+            return new Mor('Datastore', $datastore);
+        }
+
+        $rows = $this->storage()->rows(['name', 'summary.name']);
+        if (is_string($datastore)) {
+            foreach ($rows as $row) {
+                if (($row['name'] ?? $row['summary.name'] ?? null) === $datastore && isset($row['mor'])) {
+                    return Mor::from($row['mor'], 'Datastore');
+                }
+            }
+        }
+
+        if ($datastore === null && isset($rows[0]['mor'])) {
+            return Mor::from($rows[0]['mor'], 'Datastore');
+        }
+
+        throw new EsxiException('Datastore not found.');
+    }
+
+    public function resolveTask(mixed $task): Mor
+    {
+        if ($task instanceof Mor) {
+            return $task;
+        }
+
+        if (is_array($task) && isset($task['mor'])) {
+            return Mor::from($task['mor'], 'Task');
+        }
+
+        if (is_array($task)) {
+            return Mor::from($task, 'Task');
+        }
+
+        if (is_string($task) && $task !== '') {
+            return new Mor('Task', $task);
+        }
+
+        throw new EsxiException('Task not found.');
     }
 
     public function hostNetworkSystem(mixed $host = null): Mor

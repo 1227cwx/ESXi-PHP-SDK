@@ -15,4 +15,9 @@ final class InventoryService extends AbstractService
     {
         return $this->client->host()->list($properties);
     }
+
+    public function datastores(array $properties = []): array
+    {
+        return $this->client->storage()->list($properties);
+    }
 }
