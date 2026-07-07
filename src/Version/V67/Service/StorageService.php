@@ -90,6 +90,7 @@ final class StorageService extends AbstractService
 
     public function files(string $datastorePath, array $params = [], bool $wait = true): array
     {
+        $this->assertDatastorePath($datastorePath, 'datastorePath');
         $browser = $this->resolveBrowser($params['datastore'] ?? $this->datastoreNameFromPath($datastorePath));
         $searchSpec = $this->buildSearchSpec($params);
         $recursive = (bool) ($params['recursive'] ?? false);
@@ -103,6 +104,12 @@ final class StorageService extends AbstractService
     /** @internal */
     public function copyFile(string $sourceName, string $destinationName, bool $force = false, bool $wait = true, array $options = []): array
     {
+        $this->assertDatastorePath($sourceName, 'sourceName');
+        $this->assertDatastorePath($destinationName, 'destinationName');
+        if ($sourceName === $destinationName) {
+            throw new \InvalidArgumentException('Invalid parameter: sourceName and destinationName cannot be the same.');
+        }
+
         $task = $this->client->copyDatastoreFileTask->execute(
             $this->client->service('fileManager'),
             $sourceName,
@@ -122,6 +129,8 @@ final class StorageService extends AbstractService
     /** @internal */
     public function makeDirectory(string $name, bool $createParentDirectories = true, array $options = []): array
     {
+        $this->assertDatastorePath($name, 'name');
+
         $this->client->makeDirectory->execute(
             $this->client->service('fileManager'),
             $name,
@@ -205,6 +214,13 @@ final class StorageService extends AbstractService
         }
 
         throw new \InvalidArgumentException('Datastore path must be like "[datastore1] folder/file" or pass params["datastore"].');
+    }
+
+    private function assertDatastorePath(string $path, string $key): void
+    {
+        if (trim($path) === '' || preg_match('/^\[[^\]]+]($|\s+.+)/', $path) !== 1) {
+            throw new \InvalidArgumentException("Invalid parameter: {$key} must be a datastore path like \"[datastore1] folder/file\".");
+        }
     }
 
     private function optionalMor(mixed $value, string $type): ?Mor

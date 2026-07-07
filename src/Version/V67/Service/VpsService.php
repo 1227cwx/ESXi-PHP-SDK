@@ -147,17 +147,39 @@ final class VpsService extends AbstractService
 
     public function create(array $params, bool $wait = true): array
     {
-        foreach (['name', 'datastore', 'network', 'disk_gb', 'memory_mb', 'num_cpus'] as $required) {
+        foreach (['name', 'datastore', 'network', 'memory_mb', 'num_cpus'] as $required) {
             if (!array_key_exists($required, $params)) {
                 throw new \InvalidArgumentException("Missing VPS create parameter: {$required}");
             }
         }
 
-        $name = (string) $params['name'];
-        $datastore = (string) $params['datastore'];
-        $network = (string) $params['network'];
-        $vmPath = $params['vm_path'] ?? '[' . $datastore . '] ' . $name . '/' . $name . '.vmx';
-        $diskPath = $params['disk_path'] ?? '[' . $datastore . '] ' . $name . '/' . $name . '.vmdk';
+        $name = $this->requiredString($params, 'name');
+        $datastore = $this->requiredString($params, 'datastore');
+        $network = $this->requiredString($params, 'network');
+        $numCpus = $this->positiveInt($params['num_cpus'], 'num_cpus');
+        $memoryMb = $this->positiveInt($params['memory_mb'], 'memory_mb');
+        $useExistingDisk = $this->useExistingDisk($params);
+        $diskGb = $useExistingDisk ? null : $this->positiveInt($params['disk_gb'] ?? null, 'disk_gb');
+        $vmPath = isset($params['vm_path'])
+            ? $this->datastorePath($this->requiredString($params, 'vm_path'), 'vm_path')
+            : '[' . $datastore . '] ' . $name . '/' . $name . '.vmx';
+        $diskPath = isset($params['disk_path'])
+            ? $this->datastorePath($this->requiredString($params, 'disk_path'), 'disk_path')
+            : '[' . $datastore . '] ' . $name . '/' . $name . '.vmdk';
+        if ($useExistingDisk && !isset($params['disk_path'])) {
+            throw new \InvalidArgumentException('Missing existing disk parameter: disk_path');
+        }
+        if ($useExistingDisk && !isset($params['capacity_kb']) && !isset($params['disk_gb'])) {
+            throw new \InvalidArgumentException('Missing existing disk capacity parameter: disk_gb or capacity_kb');
+        }
+        $capacityInKb = null;
+        if (!$useExistingDisk) {
+            $capacityInKb = $diskGb * 1024 * 1024;
+        } elseif (isset($params['capacity_kb'])) {
+            $capacityInKb = $this->positiveInt($params['capacity_kb'], 'capacity_kb');
+        } elseif (isset($params['disk_gb'])) {
+            $capacityInKb = $this->positiveInt($params['disk_gb'], 'disk_gb') * 1024 * 1024;
+        }
 
         $config = DataObject::typed('VirtualMachineConfigSpec', [
             'name' => $name,
@@ -165,15 +187,16 @@ final class VpsService extends AbstractService
             'files' => DataObject::typed('VirtualMachineFileInfo', [
                 'vmPathName' => $vmPath,
             ]),
-            'numCPUs' => (int) $params['num_cpus'],
-            'memoryMB' => (int) $params['memory_mb'],
+            'numCPUs' => $numCpus,
+            'memoryMB' => $memoryMb,
             'deviceChange' => $this->buildCreateDeviceChanges(
-                (int) $params['disk_gb'],
+                $capacityInKb,
                 $diskPath,
                 $network,
                 $params['scsi_controller'] ?? $params['scsi_controller_type'] ?? 'lsilogic',
                 $params['adapter_type'] ?? 'vmxnet3',
-                (bool) ($params['thin_provision'] ?? true)
+                (bool) ($params['thin_provision'] ?? true),
+                !$useExistingDisk
             ),
         ]);
 
@@ -214,13 +237,13 @@ final class VpsService extends AbstractService
     {
         $spec = [];
         if (isset($params['num_cpus'])) {
-            $spec['numCPUs'] = (int) $params['num_cpus'];
+            $spec['numCPUs'] = $this->positiveInt($params['num_cpus'], 'num_cpus');
         }
         if (isset($params['cpu'])) {
-            $spec['numCPUs'] = (int) $params['cpu'];
+            $spec['numCPUs'] = $this->positiveInt($params['cpu'], 'cpu');
         }
         if (isset($params['memory_mb'])) {
-            $spec['memoryMB'] = (int) $params['memory_mb'];
+            $spec['memoryMB'] = $this->positiveInt($params['memory_mb'], 'memory_mb');
         }
 
         $vmMor = $this->client->resolveVirtualMachine($vm);
@@ -350,6 +373,11 @@ final class VpsService extends AbstractService
 
     public function setNetwork(mixed $vm, string $networkName, array $params = [], bool $wait = true): array
     {
+        $networkName = trim($networkName);
+        if ($networkName === '') {
+            throw new \InvalidArgumentException('Invalid parameter: networkName must be a non-empty string.');
+        }
+
         $vmMor = $this->client->resolveVirtualMachine($vm);
         $info = $this->client->retrieveObjectProperties($vmMor, 'VirtualMachine', ['config.hardware.device']);
         $nic = $this->firstVirtualNic($info['config.hardware.device'] ?? null);
@@ -404,16 +432,30 @@ final class VpsService extends AbstractService
     }
 
     private function buildCreateDeviceChanges(
-        int $diskGb,
+        ?int $capacityInKb,
         string $diskPath,
         string $network,
         string $scsiControllerType,
         string $adapterType,
-        bool $thinProvision
+        bool $thinProvision,
+        bool $createDisk
     ): array {
         $scsiKey = -100;
         $diskKey = -101;
         $nicKey = -102;
+        $disk = [
+            'key' => $diskKey,
+            'backing' => DataObject::typed('VirtualDiskFlatVer2BackingInfo', array_filter([
+                'fileName' => $diskPath,
+                'diskMode' => 'persistent',
+                'thinProvisioned' => $createDisk ? $thinProvision : null,
+            ], static fn (mixed $value): bool => $value !== null)),
+            'controllerKey' => $scsiKey,
+            'unitNumber' => 0,
+        ];
+        if ($capacityInKb !== null) {
+            $disk['capacityInKB'] = $capacityInKb;
+        }
 
         return [
             DataObject::typed('VirtualDeviceConfigSpec', [
@@ -426,18 +468,8 @@ final class VpsService extends AbstractService
             ]),
             DataObject::typed('VirtualDeviceConfigSpec', [
                 'operation' => 'add',
-                'fileOperation' => 'create',
-                'device' => DataObject::typed('VirtualDisk', [
-                    'key' => $diskKey,
-                    'backing' => DataObject::typed('VirtualDiskFlatVer2BackingInfo', [
-                        'fileName' => $diskPath,
-                        'diskMode' => 'persistent',
-                        'thinProvisioned' => $thinProvision,
-                    ]),
-                    'controllerKey' => $scsiKey,
-                    'unitNumber' => 0,
-                    'capacityInKB' => $diskGb * 1024 * 1024,
-                ]),
+                'fileOperation' => $createDisk ? 'create' : null,
+                'device' => DataObject::typed('VirtualDisk', $disk),
             ]),
             DataObject::typed('VirtualDeviceConfigSpec', [
                 'operation' => 'add',
@@ -459,8 +491,16 @@ final class VpsService extends AbstractService
 
     private function buildResizeDiskChange(Mor $vm, array $params): DataObject
     {
-        $diskGb = (int) ($params['disk_gb'] ?? $params['disk_size_gb'] ?? $params['capacity_gb'] ?? 0);
-        $capacityInKb = (int) ($params['capacity_kb'] ?? ($diskGb * 1024 * 1024));
+        if (isset($params['capacity_kb'])) {
+            $capacityInKb = $this->positiveInt($params['capacity_kb'], 'capacity_kb');
+        } else {
+            $diskGb = $params['disk_gb'] ?? $params['disk_size_gb'] ?? $params['capacity_gb'] ?? null;
+            if ($diskGb === null) {
+                throw new \InvalidArgumentException('Missing disk resize parameter: disk_gb or capacity_kb');
+            }
+            $capacityInKb = $this->positiveInt($diskGb, 'disk_gb') * 1024 * 1024;
+        }
+
         if ($capacityInKb <= 0) {
             throw new \InvalidArgumentException('Missing disk resize parameter: disk_gb or capacity_kb');
         }
@@ -480,10 +520,22 @@ final class VpsService extends AbstractService
 
     private function buildAddDiskChange(Mor $vm, array $params, array &$reservedUnitNumbers = []): DataObject
     {
-        $diskGb = (int) ($params['disk_gb'] ?? $params['size_gb'] ?? $params['capacity_gb'] ?? 0);
-        $capacityInKb = (int) ($params['capacity_kb'] ?? ($diskGb * 1024 * 1024));
-        if ($capacityInKb <= 0) {
+        $useExistingDisk = $this->useExistingDisk($params);
+        if (isset($params['capacity_kb'])) {
+            $capacityInKb = $this->positiveInt($params['capacity_kb'], 'capacity_kb');
+        } else {
+            $diskGb = $params['disk_gb'] ?? $params['size_gb'] ?? $params['capacity_gb'] ?? null;
+            $capacityInKb = $diskGb === null ? 0 : $this->positiveInt($diskGb, 'disk_gb') * 1024 * 1024;
+        }
+
+        if (!$useExistingDisk && $capacityInKb <= 0) {
             throw new \InvalidArgumentException('Missing add disk parameter: disk_gb or capacity_kb');
+        }
+        if ($useExistingDisk && empty($params['disk_path'])) {
+            throw new \InvalidArgumentException('Missing existing disk parameter: disk_path');
+        }
+        if ($useExistingDisk && $capacityInKb <= 0) {
+            throw new \InvalidArgumentException('Missing existing disk capacity parameter: disk_gb or capacity_kb');
         }
 
         $info = $this->client->retrieveObjectProperties($vm, 'VirtualMachine', [
@@ -500,24 +552,32 @@ final class VpsService extends AbstractService
         }
 
         $unitNumber = isset($params['unit_number'])
-            ? (int) $params['unit_number']
+            ? $this->scsiUnitNumber($params['unit_number'])
             : $this->nextDiskUnitNumber($devices, $controllerKey, $reservedUnitNumbers);
         $reservedUnitNumbers[] = $unitNumber;
 
+        $diskPath = isset($params['disk_path'])
+            ? $this->datastorePath((string) $params['disk_path'], 'disk_path')
+            : $this->defaultDiskPath($info, $unitNumber, $params);
+
+        $disk = [
+            'key' => (int) ($params['key'] ?? $this->nextNegativeKey($devices, -300 - count($reservedUnitNumbers))),
+            'backing' => DataObject::typed('VirtualDiskFlatVer2BackingInfo', array_filter([
+                'fileName' => $diskPath,
+                'diskMode' => $params['disk_mode'] ?? 'persistent',
+                'thinProvisioned' => $useExistingDisk ? null : (bool) ($params['thin_provision'] ?? true),
+            ], static fn (mixed $value): bool => $value !== null)),
+            'controllerKey' => $controllerKey,
+            'unitNumber' => $unitNumber,
+        ];
+        if ($capacityInKb > 0) {
+            $disk['capacityInKB'] = $capacityInKb;
+        }
+
         return DataObject::typed('VirtualDeviceConfigSpec', [
             'operation' => 'add',
-            'fileOperation' => 'create',
-            'device' => DataObject::typed('VirtualDisk', [
-                'key' => (int) ($params['key'] ?? $this->nextNegativeKey($devices, -300 - count($reservedUnitNumbers))),
-                'backing' => DataObject::typed('VirtualDiskFlatVer2BackingInfo', [
-                    'fileName' => $params['disk_path'] ?? $this->defaultDiskPath($info, $unitNumber, $params),
-                    'diskMode' => $params['disk_mode'] ?? 'persistent',
-                    'thinProvisioned' => (bool) ($params['thin_provision'] ?? true),
-                ]),
-                'controllerKey' => $controllerKey,
-                'unitNumber' => $unitNumber,
-                'capacityInKB' => $capacityInKb,
-            ]),
+            'fileOperation' => $useExistingDisk ? null : 'create',
+            'device' => DataObject::typed('VirtualDisk', $disk),
         ]);
     }
 
@@ -591,6 +651,87 @@ final class VpsService extends AbstractService
             fn (mixed $item): array => is_string($item) ? ['network' => $item] : (array) $item,
             $items
         );
+    }
+
+    private function requiredString(array $params, string $key): string
+    {
+        if (!isset($params[$key]) || !is_scalar($params[$key]) || trim((string) $params[$key]) === '') {
+            throw new \InvalidArgumentException("Invalid parameter: {$key} must be a non-empty string.");
+        }
+
+        return trim((string) $params[$key]);
+    }
+
+    private function positiveInt(mixed $value, string $key): int
+    {
+        $int = null;
+        if (is_int($value)) {
+            $int = $value;
+        } elseif (is_string($value) && preg_match('/^[1-9]\d*$/', trim($value)) === 1) {
+            $int = (int) trim($value);
+        }
+
+        if ($int === null || $int <= 0) {
+            throw new \InvalidArgumentException("Invalid parameter: {$key} must be a positive integer.");
+        }
+
+        return $int;
+    }
+
+    private function datastorePath(string $path, string $key): string
+    {
+        $path = trim($path);
+        if ($path === '' || preg_match('/^\[[^\]]+]($|\s+.+)/', $path) !== 1) {
+            throw new \InvalidArgumentException("Invalid parameter: {$key} must be a datastore path like \"[datastore1] folder/file\".");
+        }
+
+        return $path;
+    }
+
+    private function scsiUnitNumber(mixed $value): int
+    {
+        $unitNumber = null;
+        if (is_int($value)) {
+            $unitNumber = $value;
+        } elseif (is_string($value) && preg_match('/^(0|[1-9]\d*)$/', trim($value)) === 1) {
+            $unitNumber = (int) trim($value);
+        }
+
+        if ($unitNumber === null || $unitNumber < 0 || $unitNumber > 15 || $unitNumber === 7) {
+            throw new \InvalidArgumentException('Invalid parameter: unit_number must be between 0 and 15, except 7.');
+        }
+
+        return $unitNumber;
+    }
+
+    private function useExistingDisk(array $params): bool
+    {
+        if (array_key_exists('use_existing_disk', $params)) {
+            return (bool) $params['use_existing_disk'];
+        }
+
+        if (array_key_exists('existing_disk', $params)) {
+            return (bool) $params['existing_disk'];
+        }
+
+        if (!array_key_exists('disk_file_operation', $params)) {
+            return false;
+        }
+
+        $operation = $params['disk_file_operation'];
+        if ($operation === false || $operation === null) {
+            return true;
+        }
+
+        $operation = strtolower(trim((string) $operation));
+        if (in_array($operation, ['existing', 'use_existing', 'none', ''], true)) {
+            return true;
+        }
+        if (in_array($operation, ['create', 'new'], true)) {
+            return false;
+        }
+
+        throw new \InvalidArgumentException('Invalid parameter: disk_file_operation must be create, new, existing, use_existing or none.');
     }
 
     private function selectVirtualDisk(mixed $devices, array $params = []): array

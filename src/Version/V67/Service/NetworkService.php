@@ -45,9 +45,9 @@ final class NetworkService extends AbstractService
         }
 
         $spec = [];
-        $spec['numPorts'] = (int) ($params['num_ports'] ?? 128);
+        $spec['numPorts'] = $this->positiveInt($params['num_ports'] ?? 128, 'num_ports');
         if (isset($params['mtu'])) {
-            $spec['mtu'] = (int) $params['mtu'];
+            $spec['mtu'] = $this->positiveInt($params['mtu'], 'mtu');
         }
         if (!empty($params['pnics'])) {
             $spec['bridge'] = DataObject::typed('HostVirtualSwitchBondBridge', [
@@ -57,7 +57,7 @@ final class NetworkService extends AbstractService
 
         $this->client->addVirtualSwitch->execute(
             $this->client->hostNetworkSystem($host),
-            (string) $params['name'],
+            $this->requiredString($params, 'name'),
             $spec === [] ? null : DataObject::typed('HostVirtualSwitchSpec', $spec)
         );
 
@@ -79,9 +79,10 @@ final class NetworkService extends AbstractService
             }
         }
 
+        $spec = $this->buildPortGroupSpec($params);
         $this->client->addPortGroup->execute(
             $this->client->hostNetworkSystem($host),
-            $this->buildPortGroupSpec($params)
+            $spec
         );
 
         return $this->ok([
@@ -99,10 +100,12 @@ final class NetworkService extends AbstractService
             }
         }
 
+        $name = $this->requiredString($params, 'name');
+        $spec = $this->buildPortGroupSpec($params);
         $this->client->updatePortGroup->execute(
             $this->client->hostNetworkSystem($host),
-            (string) $params['name'],
-            $this->buildPortGroupSpec($params)
+            $name,
+            $spec
         );
 
         return $this->ok([
@@ -121,6 +124,13 @@ final class NetworkService extends AbstractService
 
     private function buildPortGroupSpec(array $params): DataObject
     {
+        $name = $this->requiredString($params, 'name');
+        $vswitch = $this->requiredString($params, 'vswitch');
+        $vlanId = $this->vlanId($params['vlan_id'] ?? 0);
+        if ($vlanId < 0 || $vlanId > 4095) {
+            throw new \InvalidArgumentException('Invalid parameter: vlan_id must be between 0 and 4095.');
+        }
+
         $policy = [];
         $security = $params['security'] ?? [];
         if ($security !== []) {
@@ -142,9 +152,9 @@ final class NetworkService extends AbstractService
         $shaping = $params['shaping'] ?? $params['bandwidth'] ?? [];
         if (isset($params['bandwidth_limit_bps'])) {
             $shaping['enabled'] = true;
-            $shaping['average_bandwidth'] = (int) $params['bandwidth_limit_bps'];
-            $shaping['peak_bandwidth'] = (int) $params['bandwidth_limit_bps'];
-            $shaping['burst_size'] = (int) ($params['burst_size'] ?? 1024 * 1024);
+            $shaping['average_bandwidth'] = $this->positiveInt($params['bandwidth_limit_bps'], 'bandwidth_limit_bps');
+            $shaping['peak_bandwidth'] = $this->positiveInt($params['bandwidth_limit_bps'], 'bandwidth_limit_bps');
+            $shaping['burst_size'] = $this->positiveInt($params['burst_size'] ?? 1024 * 1024, 'burst_size');
         }
 
         if ($shaping !== []) {
@@ -159,7 +169,7 @@ final class NetworkService extends AbstractService
                 'burst_size' => 'burstSize',
             ] as $input => $apiName) {
                 if (array_key_exists($input, $shaping)) {
-                    $shapingPolicy[$apiName] = (int) $shaping[$input];
+                    $shapingPolicy[$apiName] = $this->positiveInt($shaping[$input], 'shaping.' . $input);
                 }
             }
 
@@ -169,10 +179,51 @@ final class NetworkService extends AbstractService
         }
 
         return DataObject::typed('HostPortGroupSpec', [
-            'name' => (string) $params['name'],
-            'vlanId' => (int) ($params['vlan_id'] ?? 0),
-            'vswitchName' => (string) $params['vswitch'],
+            'name' => $name,
+            'vlanId' => $vlanId,
+            'vswitchName' => $vswitch,
             'policy' => DataObject::typed('HostNetworkPolicy', $policy),
         ]);
+    }
+
+    private function requiredString(array $params, string $key): string
+    {
+        if (!isset($params[$key]) || !is_scalar($params[$key]) || trim((string) $params[$key]) === '') {
+            throw new \InvalidArgumentException("Invalid parameter: {$key} must be a non-empty string.");
+        }
+
+        return trim((string) $params[$key]);
+    }
+
+    private function positiveInt(mixed $value, string $key): int
+    {
+        $int = null;
+        if (is_int($value)) {
+            $int = $value;
+        } elseif (is_string($value) && preg_match('/^[1-9]\d*$/', trim($value)) === 1) {
+            $int = (int) trim($value);
+        }
+
+        if ($int === null || $int <= 0) {
+            throw new \InvalidArgumentException("Invalid parameter: {$key} must be a positive integer.");
+        }
+
+        return $int;
+    }
+
+    private function vlanId(mixed $value): int
+    {
+        $int = null;
+        if (is_int($value)) {
+            $int = $value;
+        } elseif (is_string($value) && preg_match('/^(0|[1-9]\d*)$/', trim($value)) === 1) {
+            $int = (int) trim($value);
+        }
+
+        if ($int === null || $int < 0 || $int > 4095) {
+            throw new \InvalidArgumentException('Invalid parameter: vlan_id must be an integer between 0 and 4095.');
+        }
+
+        return $int;
     }
 }
