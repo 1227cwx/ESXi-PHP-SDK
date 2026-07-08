@@ -17,7 +17,6 @@ use Cwx1227\Esxi\Version\V67\Operation\Diagnostic\QueryDescriptions;
 use Cwx1227\Esxi\Version\V67\Operation\FileManager\CopyDatastoreFileTask;
 use Cwx1227\Esxi\Version\V67\Operation\FileManager\MakeDirectory;
 use Cwx1227\Esxi\Version\V67\Operation\Folder\CreateVMTask;
-use Cwx1227\Esxi\Version\V67\Operation\Folder\RegisterVMTask;
 use Cwx1227\Esxi\Version\V67\Operation\HostDatastoreBrowser\SearchDatastoreSubFoldersTask;
 use Cwx1227\Esxi\Version\V67\Operation\HostDatastoreBrowser\SearchDatastoreTask;
 use Cwx1227\Esxi\Version\V67\Operation\HostNetwork\AddPortGroup;
@@ -65,7 +64,6 @@ final class V67Client
     private readonly ContinueRetrievePropertiesEx $continueRetrievePropertiesEx;
 
     public readonly CreateVMTask $createVMTask;
-    public readonly RegisterVMTask $registerVMTask;
     public readonly ReconfigVMTask $reconfigVMTask;
     public readonly PowerOnVMTask $powerOnVMTask;
     public readonly PowerOffVMTask $powerOffVMTask;
@@ -114,7 +112,6 @@ final class V67Client
         $this->continueRetrievePropertiesEx = new ContinueRetrievePropertiesEx($soap);
 
         $this->createVMTask = new CreateVMTask($soap);
-        $this->registerVMTask = new RegisterVMTask($soap);
         $this->reconfigVMTask = new ReconfigVMTask($soap);
         $this->powerOnVMTask = new PowerOnVMTask($soap);
         $this->powerOffVMTask = new PowerOffVMTask($soap);

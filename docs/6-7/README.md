@@ -193,6 +193,8 @@ $info = $client->vps()->rawInfo('Ubuntu18');
 
 ### 3.5 创建 VPS
 
+创建新磁盘：
+
 ```php
 $result = $client->vps()->create([
     'name' => 'vps-demo-001',
@@ -213,42 +215,52 @@ $result = $client->vps()->create([
 | `name` | string | 是 | - | VPS / VM 名称 |
 | `datastore` | string | 是 | - | datastore 名称 |
 | `network` | string | 是 | - | PortGroup 名称 |
-| `num_cpus` | int | 是 | - | vCPU 数 |
-| `memory_mb` | int | 是 | - | 内存 MB |
-| `disk_gb` | int | 是 | - | 系统盘 GB |
+| `num_cpus` | int | 是 | - | vCPU 数，必须为正整数 |
+| `memory_mb` | int | 是 | - | 内存 MB，必须为正整数 |
+| `disk_gb` | int | 新建磁盘时必填 | - | 新建系统盘容量 GB；使用现有 VMDK 时可用于换算 `capacity_kb` |
+| `use_existing_disk` | bool | 否 | `false` | 是否使用已经存在的 VMDK，不创建新磁盘文件 |
+| `existing_disk` | bool | 否 | `false` | `use_existing_disk` 的别名 |
+| `disk_file_operation` | string/bool/null | 否 | `create` | 传 `existing`、`use_existing`、`none`、`false` 或 `null` 表示使用现有 VMDK |
+| `disk_path` | string | 使用现有 VMDK 时必填 | 自动生成 | VMDK datastore 路径，例如 `[datastore1] vm-a/Ubuntu18.vmdk` |
+| `capacity_kb` | int | 使用现有 VMDK 时必填之一 | - | 现有磁盘容量 KB；也可以传 `disk_gb` 让 SDK 换算 |
 | `guest_id` | string | 否 | `otherGuest64` | ESXi guestId，例如 `ubuntu64Guest` |
+| `hardware_version` | string | 否 | ESXi 默认 | 虚拟硬件版本，例如 `vmx-15`；别名：`vmx_version`、`version` |
 | `scsi_controller` | string | 否 | `lsilogic` | `lsilogic`、`lsisas`、`buslogic`、`pvscsi` |
 | `adapter_type` | string | 否 | `vmxnet3` | `vmxnet3`、`e1000`、`e1000e` |
-| `thin_provision` | bool | 否 | `true` | 是否精简置备 |
-| `vm_path` | string | 否 | 自动生成 | VMX 路径 |
-| `disk_path` | string | 否 | 自动生成 | VMDK 路径 |
+| `thin_provision` | bool | 否 | `true` | 新建磁盘时是否精简置备 |
+| `vm_path` | string | 否 | 自动生成 | VMX datastore 路径 |
 | `folder` | array/MoRef | 否 | `ha-folder-vm` | VM Folder |
 | `resource_pool` | array/MoRef | 否 | `ha-root-pool` | Resource Pool |
 | `host` | array/MoRef | 否 | `ha-host` | Host |
 
-> 当前创建接口负责创建空白 VM 和基础磁盘/网卡。操作系统安装、ISO 挂载、模板克隆等能力后续按需增加 Operation。
-
-### 3.6 注册已有 VMX
+使用模板 VMDK 创建 VPS 的典型链路：
 
 ```php
-$result = $client->vps()->register(
-    '[datastore1] demo/demo.vmx',
-    'demo',
-    true,
-    [
-        'resource_pool' => ['type' => 'ResourcePool', 'value' => 'ha-root-pool'],
-        'host' => ['type' => 'HostSystem', 'value' => 'ha-host'],
-    ]
-);
+$vmName = 'vps-demo-001';
+$vmDir = '[datastore1] ' . $vmName;
+$diskPath = $vmDir . '/Ubuntu18.vmdk';
+
+$client->storage()->makeDirectory($vmDir);
+
+// 源和目标都是 .vmdk 时，copyFile() 会自动使用 CopyVirtualDisk_Task，避免只复制描述文件。
+$client->storage()->copyFile('[datastore1] template/Ubuntu18.vmdk', $diskPath, true);
+
+$client->vps()->create([
+    'name' => $vmName,
+    'datastore' => 'datastore1',
+    'network' => 'vpc-100',
+    'num_cpus' => 1,
+    'memory_mb' => 1024,
+    'disk_path' => $diskPath,
+    'vm_path' => $vmDir . '/' . $vmName . '.vmx',
+    'use_existing_disk' => true,
+    'capacity_kb' => 41943040,
+    'guest_id' => 'ubuntu64Guest',
+    'hardware_version' => 'vmx-15',
+]);
 ```
 
-方法签名：
-
-```php
-register(string $vmxPath, ?string $name = null, bool $wait = true, array $placement = []): array
-```
-
-### 3.7 修改 CPU / 内存
+### 3.6 修改 CPU / 内存
 
 ```php
 $result = $client->vps()->resize('vps-demo-001', [
@@ -265,7 +277,7 @@ $result = $client->vps()->resize('vps-demo-001', [
 ]);
 ```
 
-### 3.8 原始 ReconfigVM_Task 能力
+### 3.7 原始 ReconfigVM_Task 能力
 
 ```php
 $result = $client->vps()->reconfigure('vps-demo-001', [
@@ -285,7 +297,7 @@ $spec = DataObject::typed('VirtualMachineConfigSpec', [
 $result = $client->vps()->reconfigure('vps-demo-001', $spec);
 ```
 
-### 3.9 电源操作
+### 3.8 电源操作
 
 ```php
 $client->vps()->powerOn('vps-demo-001');
@@ -300,22 +312,22 @@ $client->vps()->suspend('vps-demo-001');
 $result = $client->vps()->powerOn('vps-demo-001', false);
 ```
 
-### 3.10 Guest OS 操作
+### 3.9 Guest OS 操作
 
 ```php
 $client->vps()->shutdownGuest('vps-demo-001');
 $client->vps()->rebootGuest('vps-demo-001');
 ```
 
-> `shutdownGuest()` 和 `rebootGuest()` 依赖 VMware Tools。没有 VMware Tools 时可能失败或无效果。
+> `shutdownGuest()` 和 `rebootGuest()` 只封装 ESXi Guest OS 操作接口，不自动等待、不自动重试。调用者应根据自身业务决定是否先读取 `guest.toolsRunningStatus`，确认 VMware Tools 通道可用后再调用。
 
-### 3.11 查看 VPS 网卡
+### 3.10 查看 VPS 网卡
 
 ```php
 $result = $client->vps()->nics('vps-demo-001');
 ```
 
-### 3.12 绑定 VPS 到指定 PortGroup
+### 3.11 绑定 VPS 到指定 PortGroup
 
 ```php
 $result = $client->vps()->setNetwork('vps-demo-001', 'vpc-100');
@@ -333,7 +345,7 @@ $result = $client->vps()->setNetwork('vps-demo-001', 'vpc-100', [
 ]);
 ```
 
-### 3.13 VPS 状态 / 配置 / 用量
+### 3.12 VPS 状态 / 配置 / 用量
 
 ```php
 $client->vps()->status('vps-demo-001');
@@ -342,7 +354,7 @@ $client->vps()->usage('vps-demo-001');
 $client->vps()->metrics('vps-demo-001');
 ```
 
-### 3.14 修改 VPS 配置
+### 3.13 修改 VPS 配置
 
 ```php
 $client->vps()->modifyConfig('vps-demo-001', [
@@ -383,7 +395,7 @@ $client->vps()->create([
 
 `scsi_controller` 支持：`lsilogic`、`lsisas`、`buslogic`、`pvscsi`。
 
-### 3.15 删除 VPS
+### 3.14 删除 VPS
 
 ```php
 $client->vps()->delete('vps-demo-001');
@@ -664,7 +676,57 @@ $result = $client->storage()->files('[datastore1] ISO', [
 ]);
 ```
 
-内部文件任务已实现但不作为常规业务入口暴露文档：`copyFile()`、`makeDirectory()`。
+### 7.3 创建 datastore 目录
+
+```php
+$client->storage()->makeDirectory('[datastore1] vps-demo-001');
+```
+
+方法签名：
+
+```php
+makeDirectory(string $name, bool $createParentDirectories = true, array $options = []): array
+```
+
+### 7.4 复制 datastore 文件
+
+```php
+$client->storage()->copyFile(
+    '[datastore1] ISO/a.iso',
+    '[datastore1] backup/a.iso',
+    true
+);
+```
+
+方法签名：
+
+```php
+copyFile(string $sourceName, string $destinationName, bool $force = false, bool $wait = true, array $options = []): array
+```
+
+说明：源和目标都以 `.vmdk` 结尾时，`copyFile()` 默认自动走 `CopyVirtualDisk_Task`，用于完整复制虚拟磁盘；普通文件仍走 `CopyDatastoreFile_Task`。如果明确要按普通文件复制 VMDK，可以传：
+
+```php
+$client->storage()->copyFile($source, $destination, true, true, [
+    'virtual_disk' => false,
+]);
+```
+
+### 7.5 复制虚拟磁盘
+
+```php
+$client->storage()->copyVirtualDisk(
+    '[datastore1] template/Ubuntu18.vmdk',
+    '[datastore1] vps-demo-001/Ubuntu18.vmdk',
+    true
+);
+```
+
+方法签名：
+
+```php
+copyVirtualDisk(string $sourceName, string $destinationName, bool $force = false, bool $wait = true, array $options = []): array
+```
 
 ---
 
@@ -771,7 +833,6 @@ $client->vps()->setNetwork('vps-a', 'vpc-100');
 以下接口会修改 ESXi 环境或影响业务，请谨慎调用：
 
 - `vps()->create()`
-- `vps()->register()`
 - `vps()->resize()`
 - `vps()->reconfigure()`
 - `vps()->powerOff()`

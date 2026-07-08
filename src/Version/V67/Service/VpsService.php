@@ -224,20 +224,6 @@ final class VpsService extends AbstractService
         ]);
     }
 
-    public function register(string $vmxPath, ?string $name = null, bool $wait = true, array $placement = []): array
-    {
-        $task = $this->client->registerVMTask->execute(
-            $this->morOption($placement['folder'] ?? null, 'Folder', 'ha-folder-vm'),
-            $vmxPath,
-            $name,
-            false,
-            $this->morOption($placement['resource_pool'] ?? null, 'ResourcePool', 'ha-root-pool'),
-            $this->morOption($placement['host'] ?? null, 'HostSystem', 'ha-host')
-        );
-
-        return $this->taskResult($task, $wait, ['path' => $vmxPath, 'name' => $name]);
-    }
-
     public function resize(mixed $vm, array $params, bool $wait = true): array
     {
         return $this->modifyConfig($vm, $params, $wait);
