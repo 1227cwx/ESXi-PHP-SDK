@@ -435,6 +435,134 @@ final class VpsService extends AbstractService
         return $this->taskResult($task, $wait, ['network' => $networkName]);
     }
 
+    public function snapshots(mixed $vm): array
+    {
+        $row = $this->rawInfo($vm, [
+            'snapshot.rootSnapshotList',
+            'snapshot.currentSnapshot',
+        ]);
+
+        return $this->ok([
+            'current' => isset($row['snapshot.currentSnapshot'])
+                ? Mor::from($row['snapshot.currentSnapshot'], 'VirtualMachineSnapshot')->jsonSerialize()
+                : null,
+            'items' => $this->flattenSnapshotTree($row['snapshot.rootSnapshotList'] ?? []),
+        ]);
+    }
+
+    public function listSnapshots(mixed $vm): array
+    {
+        return $this->snapshots($vm);
+    }
+
+    public function createSnapshot(mixed $vm, array $params, bool $wait = true): array
+    {
+        $this->assertAllowedParams($params, [
+            'name',
+            'description',
+            'memory',
+            'quiesce',
+        ]);
+
+        $name = $this->requiredString($params, 'name');
+        $task = $this->client->createSnapshotTask->execute(
+            $this->client->resolveVirtualMachine($vm),
+            $name,
+            isset($params['description']) ? (string) $params['description'] : '',
+            $this->boolean($params['memory'] ?? false, 'memory'),
+            $this->boolean($params['quiesce'] ?? false, 'quiesce')
+        );
+
+        return $this->taskResult($task, $wait, ['name' => $name]);
+    }
+
+    public function revertSnapshot(mixed $vm, mixed $snapshot, array $params = [], bool $wait = true): array
+    {
+        $this->assertAllowedParams($params, [
+            'suppress_power_on',
+        ]);
+
+        $snapshotMor = $this->resolveSnapshot($vm, $snapshot);
+        $task = $this->client->revertToSnapshotTask->execute(
+            $snapshotMor,
+            $this->boolean($params['suppress_power_on'] ?? false, 'suppress_power_on')
+        );
+
+        return $this->taskResult($task, $wait, ['snapshot' => $snapshotMor->jsonSerialize()]);
+    }
+
+    public function removeSnapshot(mixed $vm, mixed $snapshot, array $params = [], bool $wait = true): array
+    {
+        $this->assertAllowedParams($params, [
+            'remove_children',
+            'consolidate',
+        ]);
+
+        $snapshotMor = $this->resolveSnapshot($vm, $snapshot);
+        $task = $this->client->removeSnapshotTask->execute(
+            $snapshotMor,
+            $this->boolean($params['remove_children'] ?? false, 'remove_children'),
+            $this->boolean($params['consolidate'] ?? true, 'consolidate')
+        );
+
+        return $this->taskResult($task, $wait, ['snapshot' => $snapshotMor->jsonSerialize()]);
+    }
+
+    public function removeAllSnapshots(mixed $vm, array $params = [], bool $wait = true): array
+    {
+        $this->assertAllowedParams($params, [
+            'consolidate',
+        ]);
+
+        $task = $this->client->removeAllSnapshotsTask->execute(
+            $this->client->resolveVirtualMachine($vm),
+            $this->boolean($params['consolidate'] ?? true, 'consolidate')
+        );
+
+        return $this->taskResult($task, $wait);
+    }
+
+    public function consoleTicket(mixed $vm, array $params = []): array
+    {
+        $this->assertAllowedParams($params, [
+            'type',
+        ]);
+
+        $type = strtolower(trim((string) ($params['type'] ?? 'webmks')));
+        if (!in_array($type, ['webmks', 'mks'], true)) {
+            throw new \InvalidArgumentException('Invalid parameter: type is not supported.');
+        }
+
+        $ticket = $this->client->acquireTicket->execute(
+            $this->client->resolveVirtualMachine($vm),
+            $type
+        );
+
+        $host = isset($ticket['host']) ? (string) $ticket['host'] : '';
+        if ($host === '') {
+            $host = (string) ($this->client->configuredHost() ?? '');
+        }
+        $port = isset($ticket['port']) ? (int) $ticket['port'] : null;
+        $token = isset($ticket['ticket']) ? (string) $ticket['ticket'] : '';
+
+        return $this->ok([
+            'type' => $type,
+            'host' => $host === '' ? null : $host,
+            'port' => $port,
+            'ticket' => $token === '' ? null : $token,
+            'cfg_file' => $ticket['cfgFile'] ?? null,
+            'ssl_thumbprint' => $ticket['sslThumbprint'] ?? null,
+            'websocket_url' => $type === 'webmks' && $host !== '' && $token !== ''
+                ? $this->webmksUrl($host, $port, $token)
+                : null,
+            'websocket_path' => $type === 'webmks' && $token !== ''
+                ? $this->webmksPath($token)
+                : null,
+            'websocket_subprotocol' => $type === 'webmks' ? 'binary' : null,
+            'raw' => $ticket,
+        ]);
+    }
+
     private function taskResult(Mor $task, bool $wait, array $data = []): array
     {
         if (!$wait) {
@@ -725,6 +853,27 @@ final class VpsService extends AbstractService
         return $int;
     }
 
+    private function boolean(mixed $value, string $key): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) && in_array($value, [0, 1], true)) {
+            return $value === 1;
+        }
+
+        if (is_string($value)) {
+            return match (strtolower(trim($value))) {
+                '1', 'true', 'yes', 'on' => true,
+                '0', 'false', 'no', 'off' => false,
+                default => throw new \InvalidArgumentException("Invalid parameter: {$key} must be boolean."),
+            };
+        }
+
+        throw new \InvalidArgumentException("Invalid parameter: {$key} must be boolean.");
+    }
+
     private function datastorePath(string $path, string $key): string
     {
         $path = trim($path);
@@ -878,6 +1027,85 @@ final class VpsService extends AbstractService
         }
 
         return null;
+    }
+
+    private function webmksUrl(string $host, ?int $port, string $ticket): string
+    {
+        $authority = $host;
+        if ($port !== null && $port > 0 && $port !== 443) {
+            $authority .= ':' . $port;
+        }
+
+        return 'wss://' . $authority . '/ticket/' . rawurlencode($ticket);
+    }
+
+    private function webmksPath(string $ticket): string
+    {
+        return '/ticket/' . rawurlencode($ticket);
+    }
+
+    private function flattenSnapshotTree(mixed $tree, string $parent = ''): array
+    {
+        $items = [];
+        foreach ($this->client->vmwareArray($tree, 'VirtualMachineSnapshotTree') as $node) {
+            if (!is_array($node)) {
+                continue;
+            }
+
+            $name = (string) ($node['name'] ?? '');
+            $path = $parent === '' ? $name : $parent . '/' . $name;
+            $snapshot = isset($node['snapshot'])
+                ? Mor::from($node['snapshot'], 'VirtualMachineSnapshot')->jsonSerialize()
+                : null;
+
+            $items[] = [
+                'name' => $name,
+                'path' => $path,
+                'description' => $node['description'] ?? '',
+                'create_time' => $node['createTime'] ?? null,
+                'state' => $node['state'] ?? null,
+                'quiesced' => $node['quiesced'] ?? null,
+                'snapshot' => $snapshot,
+            ];
+
+            $items = array_merge($items, $this->flattenSnapshotTree($node['childSnapshotList'] ?? [], $path));
+        }
+
+        return $items;
+    }
+
+    private function resolveSnapshot(mixed $vm, mixed $snapshot): Mor
+    {
+        if ($snapshot instanceof Mor) {
+            return $snapshot;
+        }
+
+        if (is_array($snapshot) && isset($snapshot['snapshot'])) {
+            return Mor::from($snapshot['snapshot'], 'VirtualMachineSnapshot');
+        }
+
+        if (is_array($snapshot) && isset($snapshot['mor'])) {
+            return Mor::from($snapshot['mor'], 'VirtualMachineSnapshot');
+        }
+
+        if (is_array($snapshot) && isset($snapshot['type'], $snapshot['value'])) {
+            return Mor::from($snapshot, 'VirtualMachineSnapshot');
+        }
+
+        $value = is_scalar($snapshot) ? trim((string) $snapshot) : '';
+        if ($value === '') {
+            throw new \InvalidArgumentException('Invalid parameter: snapshot must be a non-empty string or snapshot row.');
+        }
+
+        $items = $this->snapshots($vm)['data']['items'] ?? [];
+        foreach ($items as $item) {
+            $snapshotValue = is_array($item['snapshot'] ?? null) ? (string) ($item['snapshot']['value'] ?? '') : '';
+            if (($item['name'] ?? null) === $value || ($item['path'] ?? null) === $value || $snapshotValue === $value) {
+                return Mor::from($item['snapshot'], 'VirtualMachineSnapshot');
+            }
+        }
+
+        throw new EsxiException('Snapshot not found.');
     }
 
     private function executeReconfigure(Mor $vm, array $configSpec, bool $wait = true): array

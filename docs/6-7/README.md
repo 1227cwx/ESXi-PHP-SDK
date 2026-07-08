@@ -93,7 +93,7 @@ $about = $client->auth()->session();
 |---|---|---|
 | `$client->auth()` | `AuthService` | 登录、退出、会话信息。 |
 | `$client->host()` | `HostService` | 宿主机配置、监控、网络、存储、日志聚合查询。 |
-| `$client->vps()` | `VpsService` | 虚拟机列表、创建、配置修改、电源控制、系统控制、网卡、删除。 |
+| `$client->vps()` | `VpsService` | 虚拟机列表、创建、配置修改、电源控制、系统控制、网卡、快照、控制台 Ticket、删除。 |
 | `$client->network()` | `NetworkService` | vSwitch、PortGroup、物理网卡、VMkernel 网卡、VLAN、安全策略、限速策略。 |
 | `$client->storage()` | `StorageService` | Datastore 列表、用量、文件查询、目录创建、文件 / VMDK 复制。 |
 | `$client->task()` | `TaskService` | 最近任务、任务详情、等待任务完成。 |
@@ -1828,6 +1828,278 @@ $client->vps()->setNetwork('Ubuntu18', 'VPC-200', [
 ]);
 ```
 
+### 5.27 `vps()->snapshots()` / `vps()->listSnapshots()`
+
+#### 方法说明
+
+查询虚拟机快照列表。返回扁平列表，每条快照包含名称、路径、创建时间、状态和快照引用信息。
+
+#### 请求
+
+```php
+$client->vps()->snapshots(mixed $vm): array
+$client->vps()->listSnapshots(mixed $vm): array
+```
+
+#### 参数说明
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 要查询的 VM。 |
+
+#### 返回说明
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `success` | bool | 固定为 `true`。 |
+| `data.current` | array/null | 当前快照引用；无快照时为 `null`。 |
+| `data.items.*.name` | string | 快照名称。 |
+| `data.items.*.path` | string | 快照路径；子快照用 `/` 拼接。 |
+| `data.items.*.description` | string | 快照说明。 |
+| `data.items.*.create_time` | string/null | 创建时间。 |
+| `data.items.*.state` | string/null | 快照对应 VM 状态。 |
+| `data.items.*.quiesced` | bool/null | 是否静默快照。 |
+| `data.items.*.snapshot` | array/null | 后续还原、删除可直接传入的快照引用。 |
+
+#### 调用示例
+
+```php
+$snapshots = $client->vps()->snapshots('Ubuntu18');
+```
+
+
+#### 快照定位参数说明
+
+`revertSnapshot()` 和 `removeSnapshot()` 的 `$snapshot` 参数支持以下格式，调用方可以按业务场景任选一种：
+
+| 可传格式 | 示例 | 说明 |
+|---|---|---|
+| 快照名称 | `'before-upgrade'` | 按 `snapshots()` 返回的 `name` 匹配；同名快照建议改用路径或快照行。 |
+| 快照路径 | `'init/before-upgrade'` | 子快照路径，SDK 使用 `/` 拼接父子快照名称。 |
+| 快照 ID | `'snapshot-123'` | `snapshots()` 返回的 `snapshot.value`。 |
+| 快照行数组 | `$snapshots['data']['items'][0]` | `snapshots()` 返回的单条快照数据，推荐用于避免同名歧义。 |
+| 快照引用数组 | `$row['snapshot']` | 形如 `['type' => 'VirtualMachineSnapshot', 'value' => 'snapshot-123']`。 |
+
+### 5.28 `vps()->createSnapshot()`
+
+#### 方法说明
+
+创建虚拟机快照。
+
+#### 请求
+
+```php
+$client->vps()->createSnapshot(mixed $vm, array $params, bool $wait = true): array
+```
+
+#### 参数说明
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 目标 VM。 |
+| `params.name` | 是 | string | - | 非空字符串 | 快照名称。 |
+| `params.description` | 否 | string | 空字符串 | 任意说明 | 快照说明。 |
+| `params.memory` | 否 | bool | `false` | `true` / `false` | 是否包含内存状态。 |
+| `params.quiesce` | 否 | bool | `false` | `true` / `false` | 是否静默文件系统；需要 Guest 支持。 |
+| `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
+
+#### 返回说明
+
+Task 方法返回，见 [Task 等待规则](#25-task-等待规则)。`data.name` 为快照名称。
+
+#### 调用示例
+
+```php
+$client->vps()->createSnapshot('Ubuntu18', [
+    'name' => 'before-upgrade',
+    'description' => '升级前快照',
+    'memory' => false,
+    'quiesce' => false,
+]);
+```
+
+### 5.29 `vps()->revertSnapshot()`
+
+#### 方法说明
+
+还原到指定快照。`snapshot` 可以传快照名称、快照路径、快照 ID，或 `snapshots()` 返回的单条快照数组。
+
+#### 请求
+
+```php
+$client->vps()->revertSnapshot(mixed $vm, mixed $snapshot, array $params = [], bool $wait = true): array
+```
+
+#### 参数说明
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 目标 VM。 |
+| `snapshot` | 是 | mixed | - | 快照名称 / 路径 / ID / 快照行 | 要还原的快照。 |
+| `params.suppress_power_on` | 否 | bool | `false` | `true` / `false` | 还原后是否抑制自动开机。 |
+| `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
+
+#### 返回说明
+
+Task 方法返回，见 [Task 等待规则](#25-task-等待规则)。
+
+#### 调用示例
+
+```php
+$client->vps()->revertSnapshot('Ubuntu18', 'before-upgrade', [
+    'suppress_power_on' => false,
+]);
+```
+
+### 5.30 `vps()->removeSnapshot()`
+
+#### 方法说明
+
+删除指定快照。
+
+#### 请求
+
+```php
+$client->vps()->removeSnapshot(mixed $vm, mixed $snapshot, array $params = [], bool $wait = true): array
+```
+
+#### 参数说明
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 目标 VM。 |
+| `snapshot` | 是 | mixed | - | 快照名称 / 路径 / ID / 快照行 | 要删除的快照。 |
+| `params.remove_children` | 否 | bool | `false` | `true` / `false` | 是否同时删除子快照。 |
+| `params.consolidate` | 否 | bool | `true` | `true` / `false` | 删除后是否合并磁盘。 |
+| `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
+
+#### 返回说明
+
+Task 方法返回，见 [Task 等待规则](#25-task-等待规则)。
+
+#### 调用示例
+
+```php
+$client->vps()->removeSnapshot('Ubuntu18', 'before-upgrade', [
+    'remove_children' => false,
+    'consolidate' => true,
+]);
+```
+
+### 5.31 `vps()->removeAllSnapshots()`
+
+#### 方法说明
+
+删除虚拟机全部快照。
+
+#### 请求
+
+```php
+$client->vps()->removeAllSnapshots(mixed $vm, array $params = [], bool $wait = true): array
+```
+
+#### 参数说明
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 目标 VM。 |
+| `params.consolidate` | 否 | bool | `true` | `true` / `false` | 删除后是否合并磁盘。 |
+| `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
+
+#### 返回说明
+
+Task 方法返回，见 [Task 等待规则](#25-task-等待规则)。
+
+#### 调用示例
+
+```php
+$client->vps()->removeAllSnapshots('Ubuntu18');
+```
+
+
+### 5.32 `vps()->consoleTicket()`
+
+#### 方法说明
+
+获取虚拟机控制台 Ticket。这个方法只负责向 ESXi 申请短期控制台凭证；真正的浏览器控制台需要前端使用 WebMKS / VMRC / WebSocket 网关进行连接和展示。
+
+> [!IMPORTANT]
+> `webmks` 是浏览器 Web 控制台常用类型；`mks` 更偏向 VMRC / 原生 MKS 控制台。Ticket 有时效性，调用方应按需临时申请，不要长期保存。
+
+> [!NOTE]
+> ESXi 6.7 实测：WebMKS 不是普通 HTTP URL，而是 `wss://host/ticket/{ticket}` WebSocket 连接，并且握手时必须携带 `Sec-WebSocket-Protocol: binary`。如果不带该子协议，ESXi 不会返回 `101 Switching Protocols`。
+>
+> 如果 ESXi 返回 `InvalidState`，通常表示当前 VM 状态或配置不允许申请控制台 Ticket；请先确认 VM 已注册、配置完整，并且当前状态允许打开控制台。
+
+#### 请求
+
+```php
+$client->vps()->consoleTicket(mixed $vm, array $params = []): array
+```
+
+#### 参数说明
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 目标 VM。 |
+| `params.type` | 否 | string | `webmks` | `webmks`、`mks` | Ticket 类型。`webmks` 用于 Web 控制台；`mks` 用于 VMRC / MKS 控制台。 |
+
+#### 返回说明
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `success` | bool | 固定为 `true`。 |
+| `data.type` | string | 本次申请的 Ticket 类型。 |
+| `data.host` | string/null | 控制台连接目标主机。 |
+| `data.port` | int/null | 控制台连接端口。 |
+| `data.ticket` | string/null | ESXi 返回的临时 Ticket。 |
+| `data.cfg_file` | string/null | VM 配置文件路径；部分 Ticket 类型会返回。 |
+| `data.ssl_thumbprint` | string/null | ESXi 证书指纹；前端或网关校验证书时使用。 |
+| `data.websocket_url` | string/null | SDK 根据实测 ESXi 6.7 WebMKS 连接方式拼出的 WSS 地址，格式为 `wss://host[:port]/ticket/{ticket}`；不是 ESXi 原样返回字段。 |
+| `data.websocket_path` | string/null | WebMKS WebSocket 路径，格式为 `/ticket/{ticket}`，不能带尾部 `/`。 |
+| `data.websocket_subprotocol` | string/null | WebSocket 子协议；ESXi 6.7 实测必须传 `binary`。 |
+| `data.raw` | array | ESXi 原始返回，便于排查兼容性。 |
+
+#### 调用示例
+
+```php
+$ticket = $client->vps()->consoleTicket('Ubuntu18', [
+    'type' => 'webmks',
+]);
+
+// 前端或控制台网关连接 data.websocket_url 时，需要携带子协议 data.websocket_subprotocol。
+```
+
+#### 前端 Demo 示例
+
+本包根目录提供了一个可直接参考的 WebMKS 前端示例：
+
+| 文件 / 目录 | 说明 |
+|---|---|
+| `web/demo/index.html` | 控制台 Demo 页面。 |
+| `web/js/console.js` | WebMKS 连接、断开、重连、清空画面、快捷键等前端逻辑。 |
+| `web/css/console.css` | Demo 样式。 |
+| `web/api/console-ticket.php` | 后端调用 `vps()->consoleTicket()` 获取临时 Ticket 的示例。 |
+| `web/vendor/webmks/` | ESXi 6.7 Host Client 同版本 WebMKS 前端库。 |
+
+启动示例：
+
+```powershell
+$env:ESXI_HOST='your-esxi-host'
+$env:ESXI_USER='your-username'
+$env:ESXI_PASSWORD='your-password'
+php -S 127.0.0.1:8787 -t web
+```
+
+访问：
+
+```text
+http://127.0.0.1:8787/demo/?vm=test
+```
+
+> [!WARNING]
+> SDK 不会在 PHP 里渲染控制台画面。推荐做法是：后端调用 `consoleTicket()` 获取短期凭证，前端用 WebMKS/VMRC 客户端或自己的 WebSocket 网关连接 ESXi。
+
 ---
 
 ## 6. Network 网络服务
@@ -2769,6 +3041,172 @@ $client->monitor()->storage(mixed $datastore = null): array
 
 ```php
 $storageMonitor = $client->monitor()->storage('datastore1');
+```
+
+### 9.4 `monitor()->hostRealtime()`
+
+#### 方法说明
+
+查询宿主机实时性能数据。单台 ESXi 通常可获取最近约 1 小时内的 20 秒粒度数据。
+
+#### 请求
+
+```php
+$client->monitor()->hostRealtime(mixed $host = null, array $params = []): array
+```
+
+#### 参数说明
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `host` | 否 | mixed | `null` | 见 [Host 参数](#host-参数-host) | 指定宿主机。 |
+| `params.metrics` | 否 | array/string | `['cpu','memory','disk','network']` | `cpu`、`memory`、`disk`、`network`，或完整 counter 名 | 要查询的指标。 |
+| `params.interval_seconds` | 否 | int/string | `20` | 正整数 | 采样粒度，单位秒。 |
+| `params.duration_seconds` | 否 | int/string | `3600` | 正整数 | 未指定时间范围时用于计算样本数。 |
+| `params.max_samples` | 否 | int/string | 自动计算 | 正整数 | 最多返回样本数。 |
+| `params.include_instances` | 否 | bool | `false` | `true` / `false` | 是否返回每个实例，例如每块网卡、每块磁盘。 |
+
+#### 返回说明
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `success` | bool | 固定为 `true`。 |
+| `data.entity` | array | 被查询对象。 |
+| `data.interval_seconds` | int | 查询粒度。 |
+| `data.metrics.*.name` | string | 指标名称，例如 `cpu.usage.average`。 |
+| `data.metrics.*.unit` | string/null | 单位，例如 `percent`、`kiloBytesPerSecond`。 |
+| `data.metrics.*.points.*.time` | string/null | 采样时间。 |
+| `data.metrics.*.points.*.value` | int/float/string | 指标值。 |
+
+#### 调用示例
+
+```php
+$perf = $client->monitor()->hostRealtime(null, [
+    'metrics' => ['cpu', 'memory'],
+    'max_samples' => 60,
+]);
+```
+
+### 9.5 `monitor()->vmRealtime()`
+
+#### 方法说明
+
+查询虚拟机实时性能数据。虚拟机需要有可用的性能样本；关机 VM 可能返回空指标。
+
+#### 请求
+
+```php
+$client->monitor()->vmRealtime(mixed $vm, array $params = []): array
+```
+
+#### 参数说明
+
+同 [`monitor()->hostRealtime()`](#94-monitor-hostrealtime)，但第一个参数为 VM。
+
+#### 返回说明
+
+同 [`monitor()->hostRealtime()`](#94-monitor-hostrealtime)。
+
+#### 调用示例
+
+```php
+$perf = $client->monitor()->vmRealtime('Ubuntu18', [
+    'metrics' => ['cpu', 'memory', 'network'],
+    'max_samples' => 60,
+]);
+```
+
+### 9.6 `monitor()->hostHistory()`
+
+#### 方法说明
+
+查询宿主机历史性能数据。默认按最近 1 小时实时样本查询；如果传 `range=day` 或显式 `start_time/end_time`，是否有数据取决于 ESXi/vCenter 的历史保留能力。
+
+#### 请求
+
+```php
+$client->monitor()->hostHistory(mixed $host = null, array $params = []): array
+```
+
+#### 参数说明
+
+除 `host` 外，同 [`monitor()->hostRealtime()`](#94-monitor-hostrealtime)，额外支持：
+
+| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
+|---|---:|---|---|---|---|
+| `params.range` | 否 | string | `hour` | `hour`、`day` | 查询范围。单台 ESXi 建议使用 `hour`。 |
+| `params.start_time` | 否 | string | 自动 | 可被 `strtotime()` 解析的时间 | 开始时间。 |
+| `params.end_time` | 否 | string | 自动 | 可被 `strtotime()` 解析的时间 | 结束时间。 |
+
+#### 返回说明
+
+同 [`monitor()->hostRealtime()`](#94-monitor-hostrealtime)。
+
+#### 调用示例
+
+```php
+$history = $client->monitor()->hostHistory(null, [
+    'metrics' => ['cpu', 'memory'],
+    'range' => 'hour',
+    'max_samples' => 180,
+]);
+```
+
+### 9.7 `monitor()->vmHistory()`
+
+#### 方法说明
+
+查询虚拟机历史性能数据。默认按最近 1 小时实时样本查询；更长历史建议业务系统定时采集后自行入库。
+
+#### 请求
+
+```php
+$client->monitor()->vmHistory(mixed $vm, array $params = []): array
+```
+
+#### 参数说明
+
+同 [`monitor()->hostHistory()`](#96-monitor-hosthistory)，但第一个参数为 VM。
+
+#### 返回说明
+
+同 [`monitor()->hostRealtime()`](#94-monitor-hostrealtime)。
+
+#### 调用示例
+
+```php
+$history = $client->monitor()->vmHistory('Ubuntu18', [
+    'metrics' => ['cpu', 'memory', 'disk', 'network'],
+    'range' => 'hour',
+]);
+```
+
+### 9.8 `monitor()->counters()` / `monitor()->intervals()`
+
+#### 方法说明
+
+查询 ESXi 支持的性能 counter 和历史间隔。用于排查某个指标名称是否可用。
+
+#### 请求
+
+```php
+$client->monitor()->counters(): array
+$client->monitor()->intervals(): array
+```
+
+#### 参数说明
+
+无参数。
+
+#### 返回说明
+
+返回 `success/data`，`data` 为 counter 或 interval 数组。
+
+#### 调用示例
+
+```php
+$counters = $client->monitor()->counters();
+$intervals = $client->monitor()->intervals();
 ```
 
 ---

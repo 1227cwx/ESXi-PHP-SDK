@@ -25,6 +25,14 @@ use Cwx1227\Esxi\Version\V67\Operation\HostNetwork\RemovePortGroup;
 use Cwx1227\Esxi\Version\V67\Operation\HostNetwork\RemoveVirtualSwitch;
 use Cwx1227\Esxi\Version\V67\Operation\HostNetwork\UpdatePortGroup;
 use Cwx1227\Esxi\Version\V67\Operation\ManagedEntity\DestroyTask;
+use Cwx1227\Esxi\Version\V67\Operation\Performance\QueryAvailablePerfMetric;
+use Cwx1227\Esxi\Version\V67\Operation\Performance\QueryPerf;
+use Cwx1227\Esxi\Version\V67\Operation\Performance\QueryPerfProviderSummary;
+use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\AcquireTicket;
+use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\CreateSnapshotTask;
+use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\RemoveAllSnapshotsTask;
+use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\RemoveSnapshotTask;
+use Cwx1227\Esxi\Version\V67\Operation\VirtualMachine\RevertToSnapshotTask;
 use Cwx1227\Esxi\Version\V67\Operation\Property\ContinueRetrievePropertiesEx;
 use Cwx1227\Esxi\Version\V67\Operation\Property\CreateContainerView;
 use Cwx1227\Esxi\Version\V67\Operation\Property\DestroyView;
@@ -72,6 +80,11 @@ final class V67Client
     public readonly ShutdownGuest $shutdownGuest;
     public readonly RebootGuest $rebootGuest;
     public readonly DestroyTask $destroyTask;
+    public readonly AcquireTicket $acquireTicket;
+    public readonly CreateSnapshotTask $createSnapshotTask;
+    public readonly RevertToSnapshotTask $revertToSnapshotTask;
+    public readonly RemoveSnapshotTask $removeSnapshotTask;
+    public readonly RemoveAllSnapshotsTask $removeAllSnapshotsTask;
 
     public readonly AddVirtualSwitch $addVirtualSwitch;
     public readonly RemoveVirtualSwitch $removeVirtualSwitch;
@@ -86,6 +99,9 @@ final class V67Client
     public readonly SearchDatastoreSubFoldersTask $searchDatastoreSubFoldersTask;
     public readonly BrowseDiagnosticLog $browseDiagnosticLog;
     public readonly QueryDescriptions $queryDescriptions;
+    public readonly QueryAvailablePerfMetric $queryAvailablePerfMetric;
+    public readonly QueryPerf $queryPerf;
+    public readonly QueryPerfProviderSummary $queryPerfProviderSummary;
 
     private ?AuthService $authService = null;
     private ?VpsService $vpsService = null;
@@ -120,6 +136,11 @@ final class V67Client
         $this->shutdownGuest = new ShutdownGuest($soap);
         $this->rebootGuest = new RebootGuest($soap);
         $this->destroyTask = new DestroyTask($soap);
+        $this->acquireTicket = new AcquireTicket($soap);
+        $this->createSnapshotTask = new CreateSnapshotTask($soap);
+        $this->revertToSnapshotTask = new RevertToSnapshotTask($soap);
+        $this->removeSnapshotTask = new RemoveSnapshotTask($soap);
+        $this->removeAllSnapshotsTask = new RemoveAllSnapshotsTask($soap);
 
         $this->addVirtualSwitch = new AddVirtualSwitch($soap);
         $this->removeVirtualSwitch = new RemoveVirtualSwitch($soap);
@@ -134,6 +155,9 @@ final class V67Client
         $this->searchDatastoreSubFoldersTask = new SearchDatastoreSubFoldersTask($soap);
         $this->browseDiagnosticLog = new BrowseDiagnosticLog($soap);
         $this->queryDescriptions = new QueryDescriptions($soap);
+        $this->queryAvailablePerfMetric = new QueryAvailablePerfMetric($soap);
+        $this->queryPerf = new QueryPerf($soap);
+        $this->queryPerfProviderSummary = new QueryPerfProviderSummary($soap);
     }
 
     public function login(?string $locale = null): void
@@ -164,6 +188,19 @@ final class V67Client
     public function session(): ?array
     {
         return $this->session;
+    }
+
+    public function configuredHost(): ?string
+    {
+        $host = trim((string) ($this->config['host'] ?? ''));
+        if ($host === '') {
+            return null;
+        }
+
+        $url = preg_match('#^https?://#i', $host) === 1 ? $host : 'https://' . $host;
+        $parsed = parse_url($url, PHP_URL_HOST);
+
+        return is_string($parsed) && $parsed !== '' ? $parsed : rtrim($host, '/');
     }
 
     public function auth(): AuthService

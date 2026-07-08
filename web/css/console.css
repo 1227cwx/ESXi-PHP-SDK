@@ -1,0 +1,144 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  background: #101318;
+  color: #eef2f7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 18px;
+  background: #171c24;
+  border-bottom: 1px solid #2b3442;
+}
+
+.topbar h1 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.topbar p {
+  margin: 0;
+  color: #aab6c5;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+input, button {
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #3a4658;
+  background: #0f131a;
+  color: #eef2f7;
+  padding: 0 12px;
+}
+
+button {
+  cursor: pointer;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+main {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: calc(100% - 65px);
+}
+
+.status-card, .log-card {
+  margin: 12px 18px;
+  padding: 10px 12px;
+  background: #171c24;
+  border: 1px solid #2b3442;
+  border-radius: 10px;
+  color: #c9d4e2;
+  font-size: 13px;
+}
+
+.status-card code {
+  word-break: break-all;
+  color: #93c5fd;
+}
+
+.note {
+  margin-top: 6px;
+  color: #fbbf24;
+}
+
+.console-shell {
+  margin: 0 18px;
+  min-height: 520px;
+  height: calc(100vh - 260px);
+  background: #000;
+  border: 1px solid #2b3442;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.wmks-container {
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.log-title {
+  margin-bottom: 6px;
+  color: #fff;
+}
+
+#log {
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #9ae6b4;
+}
+
+/* WebMKS canvas containment: avoid mobile control widgets or absolute canvas blocking the whole page. */
+.console-shell {
+  position: relative;
+}
+
+.wmks-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.wmks-container canvas,
+.wmks-container video {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.feedback-container,
+.trackpad,
+.extended-keypad,
+.input-proxy {
+  pointer-events: none;
+}
+
+
+.console-placeholder {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 16px;
+  letter-spacing: .04em;
+  user-select: none;
+}

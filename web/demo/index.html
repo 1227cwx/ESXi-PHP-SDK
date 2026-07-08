@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESXi WebMKS Console Demo</title>
+  <link rel="stylesheet" href="/vendor/webmks/css/wmks-all.css">
+  <link rel="stylesheet" href="/css/console.css?v=20260708-5">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>ESXi WebMKS Console Demo</h1>
+      <p>默认连接 VM：<code id="vmNameLabel">test</code></p>
+    </div>
+    <div class="actions">
+      <input id="vmName" value="test" spellcheck="false">
+      <button id="connectBtn">连接控制台</button>
+      <button id="wakeBtn" disabled>唤醒/Enter</button>
+      <button id="cadBtn" disabled>Ctrl+Alt+Del</button>
+      <button id="disconnectBtn" disabled>断开</button>
+      <button id="fullscreenBtn" disabled>全屏</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="status-card">
+      <div>状态：<strong id="status">未连接</strong></div>
+      <div>WebSocket：<code id="wsUrl">-</code></div>
+      <div>子协议：<code id="wsProtocol">-</code></div>
+      <div class="note">如果浏览器拒绝 WSS 连接，请先访问 <code id="esxiHttps">https://ESXi地址/</code> 并信任自签证书，生产环境建议走自己的 WebSocket 网关。</div>
+    </section>
+
+    <section id="consoleShell" class="console-shell">
+      <div id="wmksContainer" class="wmks-container"></div>
+    </section>
+
+    <section class="log-card">
+      <div class="log-title">日志</div>
+      <pre id="log"></pre>
+    </section>
+  </main>
+
+  <script src="/vendor/jquery/jquery-2.1.4.min.js"></script>
+  <script src="/vendor/jquery/jquery-ui-1.11.4.min.js"></script>
+  <script src="/vendor/webmks/wmks.min.js"></script>
+  <script src="/js/console.js?v=20260708-5"></script>
+</body>
+</html>
