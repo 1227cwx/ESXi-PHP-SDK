@@ -20,4 +20,15 @@ abstract class AbstractService
             'data' => $data,
         ];
     }
+
+    protected function assertAllowedParams(array $params, array $allowed, string $prefix = ''): void
+    {
+        $allowed = array_flip($allowed);
+        foreach ($params as $key => $_) {
+            if (!array_key_exists($key, $allowed)) {
+                $name = $prefix === '' ? (string) $key : $prefix . '.' . $key;
+                throw new \InvalidArgumentException("Invalid parameter: {$name} is not supported.");
+            }
+        }
+    }
 }

@@ -147,6 +147,27 @@ final class VpsService extends AbstractService
 
     public function create(array $params, bool $wait = true): array
     {
+        $this->assertAllowedParams($params, [
+            'name',
+            'datastore',
+            'network',
+            'memory_mb',
+            'num_cpus',
+            'disk_gb',
+            'use_existing_disk',
+            'existing_disk',
+            'disk_path',
+            'vm_path',
+            'guest_id',
+            'hardware_version',
+            'vmx_version',
+            'version',
+            'scsi_controller',
+            'scsi_controller_type',
+            'adapter_type',
+            'thin_provision',
+        ]);
+
         foreach (['name', 'datastore', 'network', 'memory_mb', 'num_cpus'] as $required) {
             if (!array_key_exists($required, $params)) {
                 throw new \InvalidArgumentException("Missing VPS create parameter: {$required}");
@@ -159,7 +180,10 @@ final class VpsService extends AbstractService
         $numCpus = $this->positiveInt($params['num_cpus'], 'num_cpus');
         $memoryMb = $this->positiveInt($params['memory_mb'], 'memory_mb');
         $useExistingDisk = $this->useExistingDisk($params);
-        $diskGb = $useExistingDisk ? null : $this->positiveInt($params['disk_gb'] ?? null, 'disk_gb');
+        $diskGb = isset($params['disk_gb']) ? $this->positiveInt($params['disk_gb'], 'disk_gb') : null;
+        if ($diskGb === null) {
+            throw new \InvalidArgumentException('Missing VPS create parameter: disk_gb');
+        }
         $vmPath = isset($params['vm_path'])
             ? $this->datastorePath($this->requiredString($params, 'vm_path'), 'vm_path')
             : '[' . $datastore . '] ' . $name . '/' . $name . '.vmx';
@@ -169,17 +193,7 @@ final class VpsService extends AbstractService
         if ($useExistingDisk && !isset($params['disk_path'])) {
             throw new \InvalidArgumentException('Missing existing disk parameter: disk_path');
         }
-        if ($useExistingDisk && !isset($params['capacity_kb']) && !isset($params['disk_gb'])) {
-            throw new \InvalidArgumentException('Missing existing disk capacity parameter: disk_gb or capacity_kb');
-        }
-        $capacityInKb = null;
-        if (!$useExistingDisk) {
-            $capacityInKb = $diskGb * 1024 * 1024;
-        } elseif (isset($params['capacity_kb'])) {
-            $capacityInKb = $this->positiveInt($params['capacity_kb'], 'capacity_kb');
-        } elseif (isset($params['disk_gb'])) {
-            $capacityInKb = $this->positiveInt($params['disk_gb'], 'disk_gb') * 1024 * 1024;
-        }
+        $capacityInKb = $diskGb * 1024 * 1024;
 
         $configSpec = [
             'name' => $name,
@@ -211,10 +225,10 @@ final class VpsService extends AbstractService
         $config = DataObject::typed('VirtualMachineConfigSpec', $configSpec);
 
         $task = $this->client->createVMTask->execute(
-            $this->morOption($params['folder'] ?? null, 'Folder', 'ha-folder-vm'),
+            new Mor('Folder', 'ha-folder-vm'),
             $config,
-            $this->morOption($params['resource_pool'] ?? null, 'ResourcePool', 'ha-root-pool'),
-            $this->morOption($params['host'] ?? null, 'HostSystem', 'ha-host')
+            new Mor('ResourcePool', 'ha-root-pool'),
+            new Mor('HostSystem', 'ha-host')
         );
 
         return $this->taskResult($task, $wait, [
@@ -231,6 +245,19 @@ final class VpsService extends AbstractService
 
     public function modifyConfig(mixed $vm, array $params, bool $wait = true): array
     {
+        $this->assertAllowedParams($params, [
+            'num_cpus',
+            'cpu',
+            'memory_mb',
+            'disk_gb',
+            'disk_size_gb',
+            'capacity_gb',
+            'add_disk',
+            'add_disks',
+            'add_network',
+            'add_networks',
+        ]);
+
         $spec = [];
         if (isset($params['num_cpus'])) {
             $spec['numCPUs'] = $this->positiveInt($params['num_cpus'], 'num_cpus');
@@ -245,7 +272,11 @@ final class VpsService extends AbstractService
         $vmMor = $this->client->resolveVirtualMachine($vm);
         $deviceChanges = [];
 
-        if (isset($params['disk_gb']) || isset($params['disk_size_gb']) || isset($params['capacity_gb'])) {
+        if (
+            isset($params['disk_gb'])
+            || isset($params['disk_size_gb'])
+            || isset($params['capacity_gb'])
+        ) {
             $deviceChanges[] = $this->buildResizeDiskChange($vmMor, $params);
         }
 
@@ -273,7 +304,7 @@ final class VpsService extends AbstractService
             throw new \InvalidArgumentException('At least one VM config parameter is required.');
         }
 
-        return $this->reconfigure($vmMor, $spec, $wait);
+        return $this->executeReconfigure($vmMor, $spec, $wait);
     }
 
     public function resizeDisk(mixed $vm, int|array $params, bool $wait = true): array
@@ -295,14 +326,9 @@ final class VpsService extends AbstractService
         return $this->modifyConfig($vm, ['add_network' => $params], $wait);
     }
 
-    public function reconfigure(mixed $vm, array|DataObject $configSpec, bool $wait = true): array
+    public function reconfigure(mixed $vm, array $params, bool $wait = true): array
     {
-        $task = $this->client->reconfigVMTask->execute(
-            $this->client->resolveVirtualMachine($vm),
-            $configSpec instanceof DataObject ? $configSpec : DataObject::typed('VirtualMachineConfigSpec', $configSpec)
-        );
-
-        return $this->taskResult($task, $wait);
+        return $this->modifyConfig($vm, $params, $wait);
     }
 
     public function powerOn(mixed $vm, bool $wait = true): array
@@ -369,6 +395,13 @@ final class VpsService extends AbstractService
 
     public function setNetwork(mixed $vm, string $networkName, array $params = [], bool $wait = true): array
     {
+        $this->assertAllowedParams($params, [
+            'adapter_type',
+            'start_connected',
+            'allow_guest_control',
+            'connected',
+        ]);
+
         $networkName = trim($networkName);
         if ($networkName === '') {
             throw new \InvalidArgumentException('Invalid parameter: networkName must be a non-empty string.');
@@ -377,7 +410,7 @@ final class VpsService extends AbstractService
         $vmMor = $this->client->resolveVirtualMachine($vm);
         $info = $this->client->retrieveObjectProperties($vmMor, 'VirtualMachine', ['config.hardware.device']);
         $nic = $this->firstVirtualNic($info['config.hardware.device'] ?? null);
-        $adapterType = $params['adapter_type'] ?? ($nic['_xsi_type'] ?? 'VirtualVmxnet3');
+        $adapterType = $params['adapter_type'] ?? $this->adapterAliasFromDeviceType((string) ($nic['_xsi_type'] ?? 'VirtualVmxnet3'));
 
         $deviceParams = [
             'key' => $nic['key'] ?? -200,
@@ -389,7 +422,7 @@ final class VpsService extends AbstractService
                 'allowGuestControl' => $params['allow_guest_control'] ?? true,
                 'connected' => $params['connected'] ?? true,
             ]),
-            'addressType' => $params['address_type'] ?? 'generated',
+            'addressType' => 'generated',
         ];
 
         $task = $this->client->reconfigVMTask->execute($vmMor, DataObject::typed('VirtualMachineConfigSpec', [
@@ -416,15 +449,6 @@ final class VpsService extends AbstractService
         $result['data'] = array_replace($data, $result['data'] ?? []);
 
         return $result;
-    }
-
-    private function morOption(mixed $value, string $type, string $default): Mor
-    {
-        if ($value === null) {
-            return new Mor($type, $default);
-        }
-
-        return Mor::from($value, $type);
     }
 
     private function buildCreateDeviceChanges(
@@ -487,24 +511,26 @@ final class VpsService extends AbstractService
 
     private function buildResizeDiskChange(Mor $vm, array $params): DataObject
     {
-        if (isset($params['capacity_kb'])) {
-            $capacityInKb = $this->positiveInt($params['capacity_kb'], 'capacity_kb');
-        } else {
-            $diskGb = $params['disk_gb'] ?? $params['disk_size_gb'] ?? $params['capacity_gb'] ?? null;
-            if ($diskGb === null) {
-                throw new \InvalidArgumentException('Missing disk resize parameter: disk_gb or capacity_kb');
-            }
-            $capacityInKb = $this->positiveInt($diskGb, 'disk_gb') * 1024 * 1024;
+        $this->assertAllowedParams($params, [
+            'disk_gb',
+            'disk_size_gb',
+            'capacity_gb',
+        ]);
+
+        $diskGb = $params['disk_gb'] ?? $params['disk_size_gb'] ?? $params['capacity_gb'] ?? null;
+        if ($diskGb === null) {
+            throw new \InvalidArgumentException('Missing disk resize parameter: disk_gb');
         }
+        $capacityInKb = $this->positiveInt($diskGb, 'disk_gb') * 1024 * 1024;
 
         if ($capacityInKb <= 0) {
-            throw new \InvalidArgumentException('Missing disk resize parameter: disk_gb or capacity_kb');
+            throw new \InvalidArgumentException('Missing disk resize parameter: disk_gb');
         }
 
         $info = $this->client->retrieveObjectProperties($vm, 'VirtualMachine', [
             'config.hardware.device',
         ]);
-        $disk = $this->selectVirtualDisk($info['config.hardware.device'] ?? null, $params);
+        $disk = $this->selectVirtualDisk($info['config.hardware.device'] ?? null);
         $disk['capacityInKB'] = $capacityInKb;
         unset($disk['capacityInBytes']);
 
@@ -516,22 +542,30 @@ final class VpsService extends AbstractService
 
     private function buildAddDiskChange(Mor $vm, array $params, array &$reservedUnitNumbers = []): DataObject
     {
+        $this->assertAllowedParams($params, [
+            'disk_gb',
+            'size_gb',
+            'capacity_gb',
+            'use_existing_disk',
+            'existing_disk',
+            'disk_path',
+            'datastore',
+            'folder',
+            'thin_provision',
+        ]);
+
         $useExistingDisk = $this->useExistingDisk($params);
-        if (isset($params['capacity_kb'])) {
-            $capacityInKb = $this->positiveInt($params['capacity_kb'], 'capacity_kb');
-        } else {
-            $diskGb = $params['disk_gb'] ?? $params['size_gb'] ?? $params['capacity_gb'] ?? null;
-            $capacityInKb = $diskGb === null ? 0 : $this->positiveInt($diskGb, 'disk_gb') * 1024 * 1024;
-        }
+        $diskGb = $params['disk_gb'] ?? $params['size_gb'] ?? $params['capacity_gb'] ?? null;
+        $capacityInKb = $diskGb === null ? 0 : $this->positiveInt($diskGb, 'disk_gb') * 1024 * 1024;
 
         if (!$useExistingDisk && $capacityInKb <= 0) {
-            throw new \InvalidArgumentException('Missing add disk parameter: disk_gb or capacity_kb');
+            throw new \InvalidArgumentException('Missing add disk parameter: disk_gb');
         }
         if ($useExistingDisk && empty($params['disk_path'])) {
             throw new \InvalidArgumentException('Missing existing disk parameter: disk_path');
         }
         if ($useExistingDisk && $capacityInKb <= 0) {
-            throw new \InvalidArgumentException('Missing existing disk capacity parameter: disk_gb or capacity_kb');
+            throw new \InvalidArgumentException('Missing existing disk capacity parameter: disk_gb');
         }
 
         $info = $this->client->retrieveObjectProperties($vm, 'VirtualMachine', [
@@ -541,15 +575,13 @@ final class VpsService extends AbstractService
         ]);
 
         $devices = $this->client->vmwareArray($info['config.hardware.device'] ?? [], 'VirtualDevice');
-        $controller = $this->selectScsiController($devices, $params);
+        $controller = $this->selectScsiController($devices);
         $controllerKey = (int) ($controller['key'] ?? 0);
         if ($controllerKey === 0) {
             throw new EsxiException('SCSI controller not found.');
         }
 
-        $unitNumber = isset($params['unit_number'])
-            ? $this->scsiUnitNumber($params['unit_number'])
-            : $this->nextDiskUnitNumber($devices, $controllerKey, $reservedUnitNumbers);
+        $unitNumber = $this->nextDiskUnitNumber($devices, $controllerKey, $reservedUnitNumbers);
         $reservedUnitNumbers[] = $unitNumber;
 
         $diskPath = isset($params['disk_path'])
@@ -557,10 +589,10 @@ final class VpsService extends AbstractService
             : $this->defaultDiskPath($info, $unitNumber, $params);
 
         $disk = [
-            'key' => (int) ($params['key'] ?? $this->nextNegativeKey($devices, -300 - count($reservedUnitNumbers))),
+            'key' => $this->nextNegativeKey($devices, -300 - count($reservedUnitNumbers)),
             'backing' => DataObject::typed('VirtualDiskFlatVer2BackingInfo', array_filter([
                 'fileName' => $diskPath,
-                'diskMode' => $params['disk_mode'] ?? 'persistent',
+                'diskMode' => 'persistent',
                 'thinProvisioned' => $useExistingDisk ? null : (bool) ($params['thin_provision'] ?? true),
             ], static fn (mixed $value): bool => $value !== null)),
             'controllerKey' => $controllerKey,
@@ -579,6 +611,16 @@ final class VpsService extends AbstractService
 
     private function buildAddNetworkChange(string $networkName, array $params = [], int $key = -500): DataObject
     {
+        $this->assertAllowedParams($params, [
+            'network',
+            'port_group',
+            'name',
+            'adapter_type',
+            'start_connected',
+            'allow_guest_control',
+            'connected',
+        ]);
+
         return DataObject::typed('VirtualDeviceConfigSpec', [
             'operation' => 'add',
             'device' => DataObject::typed($this->adapterType((string) ($params['adapter_type'] ?? 'vmxnet3')), [
@@ -591,7 +633,7 @@ final class VpsService extends AbstractService
                     'allowGuestControl' => $params['allow_guest_control'] ?? true,
                     'connected' => $params['connected'] ?? true,
                 ]),
-                'addressType' => $params['address_type'] ?? 'generated',
+                'addressType' => 'generated',
             ]),
         ]);
     }
@@ -603,7 +645,7 @@ final class VpsService extends AbstractService
             'lsisas', 'lsilogicsas', 'sas' => 'VirtualLsiLogicSASController',
             'buslogic' => 'VirtualBusLogicController',
             'pvscsi', 'paravirtual', 'paravirtualscsi' => 'ParaVirtualSCSIController',
-            default => $type,
+            default => throw new \InvalidArgumentException('Invalid parameter: scsi_controller is not supported.'),
         };
     }
 
@@ -613,7 +655,16 @@ final class VpsService extends AbstractService
             'e1000' => 'VirtualE1000',
             'e1000e' => 'VirtualE1000e',
             'vmxnet3' => 'VirtualVmxnet3',
-            default => $type,
+            default => throw new \InvalidArgumentException('Invalid parameter: adapter_type is not supported.'),
+        };
+    }
+
+    private function adapterAliasFromDeviceType(string $type): string
+    {
+        return match ($type) {
+            'VirtualE1000' => 'e1000',
+            'VirtualE1000e' => 'e1000e',
+            default => 'vmxnet3',
         };
     }
 
@@ -684,22 +735,6 @@ final class VpsService extends AbstractService
         return $path;
     }
 
-    private function scsiUnitNumber(mixed $value): int
-    {
-        $unitNumber = null;
-        if (is_int($value)) {
-            $unitNumber = $value;
-        } elseif (is_string($value) && preg_match('/^(0|[1-9]\d*)$/', trim($value)) === 1) {
-            $unitNumber = (int) trim($value);
-        }
-
-        if ($unitNumber === null || $unitNumber < 0 || $unitNumber > 15 || $unitNumber === 7) {
-            throw new \InvalidArgumentException('Invalid parameter: unit_number must be between 0 and 15, except 7.');
-        }
-
-        return $unitNumber;
-    }
-
     private function useExistingDisk(array $params): bool
     {
         if (array_key_exists('use_existing_disk', $params)) {
@@ -710,48 +745,15 @@ final class VpsService extends AbstractService
             return (bool) $params['existing_disk'];
         }
 
-        if (!array_key_exists('disk_file_operation', $params)) {
-            return false;
-        }
-
-        $operation = $params['disk_file_operation'];
-        if ($operation === false || $operation === null) {
-            return true;
-        }
-
-        $operation = strtolower(trim((string) $operation));
-        if (in_array($operation, ['existing', 'use_existing', 'none', ''], true)) {
-            return true;
-        }
-        if (in_array($operation, ['create', 'new'], true)) {
-            return false;
-        }
-
-        throw new \InvalidArgumentException('Invalid parameter: disk_file_operation must be create, new, existing, use_existing or none.');
+        return false;
     }
 
-    private function selectVirtualDisk(mixed $devices, array $params = []): array
+    private function selectVirtualDisk(mixed $devices): array
     {
         $disks = [];
         foreach ($this->client->vmwareArray($devices, 'VirtualDevice') as $device) {
             if (is_array($device) && ($device['_xsi_type'] ?? '') === 'VirtualDisk') {
                 $disks[] = $device;
-            }
-        }
-
-        foreach ($disks as $disk) {
-            if (isset($params['disk_key']) && (string) ($disk['key'] ?? '') === (string) $params['disk_key']) {
-                return $disk;
-            }
-            if (isset($params['key']) && (string) ($disk['key'] ?? '') === (string) $params['key']) {
-                return $disk;
-            }
-            if (
-                isset($params['controller_key'], $params['unit_number'])
-                && (string) ($disk['controllerKey'] ?? '') === (string) $params['controller_key']
-                && (string) ($disk['unitNumber'] ?? '') === (string) $params['unit_number']
-            ) {
-                return $disk;
             }
         }
 
@@ -762,7 +764,7 @@ final class VpsService extends AbstractService
         throw new EsxiException('Virtual disk not found.');
     }
 
-    private function selectScsiController(array $devices, array $params = []): array
+    private function selectScsiController(array $devices): array
     {
         $controllerTypes = [
             'VirtualLsiLogicController',
@@ -773,10 +775,6 @@ final class VpsService extends AbstractService
 
         foreach ($devices as $device) {
             if (!is_array($device) || !in_array($device['_xsi_type'] ?? '', $controllerTypes, true)) {
-                continue;
-            }
-
-            if (isset($params['controller_key']) && (string) ($device['key'] ?? '') !== (string) $params['controller_key']) {
                 continue;
             }
 
@@ -880,5 +878,15 @@ final class VpsService extends AbstractService
         }
 
         return null;
+    }
+
+    private function executeReconfigure(Mor $vm, array $configSpec, bool $wait = true): array
+    {
+        $task = $this->client->reconfigVMTask->execute(
+            $vm,
+            DataObject::typed('VirtualMachineConfigSpec', $configSpec)
+        );
+
+        return $this->taskResult($task, $wait);
     }
 }

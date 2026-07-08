@@ -90,6 +90,7 @@ final class StorageService extends AbstractService
 
     public function files(string $datastorePath, array $params = [], bool $wait = true): array
     {
+        $this->assertSearchParams($params);
         $this->assertDatastorePath($datastorePath, 'datastorePath');
         $browser = $this->resolveBrowser($params['datastore'] ?? $this->datastoreNameFromPath($datastorePath));
         $searchSpec = $this->buildSearchSpec($params);
@@ -104,6 +105,7 @@ final class StorageService extends AbstractService
     /** @internal */
     public function copyFile(string $sourceName, string $destinationName, bool $force = false, bool $wait = true, array $options = []): array
     {
+        $this->assertCopyOptions($options);
         $this->assertDatastorePath($sourceName, 'sourceName');
         $this->assertDatastorePath($destinationName, 'destinationName');
         if ($sourceName === $destinationName) {
@@ -118,8 +120,8 @@ final class StorageService extends AbstractService
             $this->client->service('fileManager'),
             $sourceName,
             $destinationName,
-            $this->optionalMor($options['source_datacenter'] ?? null, 'Datacenter'),
-            $this->optionalMor($options['destination_datacenter'] ?? null, 'Datacenter'),
+            null,
+            null,
             $force
         );
 
@@ -133,24 +135,20 @@ final class StorageService extends AbstractService
     /** @internal */
     public function copyVirtualDisk(string $sourceName, string $destinationName, bool $force = false, bool $wait = true, array $options = []): array
     {
+        $this->assertCopyOptions($options);
         $this->assertDatastorePath($sourceName, 'sourceName');
         $this->assertDatastorePath($destinationName, 'destinationName');
         if ($sourceName === $destinationName) {
             throw new \InvalidArgumentException('Invalid parameter: sourceName and destinationName cannot be the same.');
         }
 
-        $destinationSpec = $options['destination_spec'] ?? $options['dest_spec'] ?? null;
-        if (is_array($destinationSpec)) {
-            $destinationSpec = DataObject::typed('FileBackedVirtualDiskSpec', $destinationSpec);
-        }
-
         $task = $this->client->copyVirtualDiskTask->execute(
             $this->client->service('virtualDiskManager'),
             $sourceName,
             $destinationName,
-            $this->optionalMor($options['source_datacenter'] ?? null, 'Datacenter'),
-            $this->optionalMor($options['destination_datacenter'] ?? null, 'Datacenter'),
-            $destinationSpec,
+            null,
+            null,
+            null,
             $force
         );
 
@@ -165,12 +163,13 @@ final class StorageService extends AbstractService
     /** @internal */
     public function makeDirectory(string $name, bool $createParentDirectories = true, array $options = []): array
     {
+        $this->assertAllowedParams($options, []);
         $this->assertDatastorePath($name, 'name');
 
         $this->client->makeDirectory->execute(
             $this->client->service('fileManager'),
             $name,
-            $this->optionalMor($options['datacenter'] ?? null, 'Datacenter'),
+            null,
             $createParentDirectories
         );
 
@@ -199,12 +198,18 @@ final class StorageService extends AbstractService
 
     private function buildSearchSpec(array $params): DataObject
     {
-        $details = array_replace([
-            'fileType' => true,
-            'fileSize' => true,
+        $inputDetails = array_replace([
+            'file_type' => true,
+            'file_size' => true,
             'modification' => true,
-            'fileOwner' => false,
+            'file_owner' => false,
         ], $params['details'] ?? []);
+        $details = [
+            'fileType' => (bool) $inputDetails['file_type'],
+            'fileSize' => (bool) $inputDetails['file_size'],
+            'modification' => (bool) $inputDetails['modification'],
+            'fileOwner' => (bool) $inputDetails['file_owner'],
+        ];
 
         $spec = [];
         if (!empty($params['file_types'])) {
@@ -230,6 +235,38 @@ final class StorageService extends AbstractService
         return DataObject::typed('HostDatastoreBrowserSearchSpec', $spec);
     }
 
+    private function assertSearchParams(array $params): void
+    {
+        $this->assertAllowedParams($params, [
+            'datastore',
+            'recursive',
+            'file_types',
+            'details',
+            'search_case_insensitive',
+            'match_pattern',
+            'sort_folders_first',
+        ]);
+
+        if (isset($params['details'])) {
+            if (!is_array($params['details'])) {
+                throw new \InvalidArgumentException('Invalid parameter: details must be an array.');
+            }
+            $this->assertAllowedParams($params['details'], [
+                'file_type',
+                'file_size',
+                'modification',
+                'file_owner',
+            ], 'details');
+        }
+    }
+
+    private function assertCopyOptions(array $options): void
+    {
+        $this->assertAllowedParams($options, [
+            'virtual_disk',
+        ]);
+    }
+
     private function fileQueryType(string $type): string
     {
         return match (strtolower($type)) {
@@ -239,7 +276,7 @@ final class StorageService extends AbstractService
             'log' => 'LogFileQuery',
             'iso' => 'IsoImageFileQuery',
             'floppy' => 'FloppyImageFileQuery',
-            default => $type,
+            default => throw new \InvalidArgumentException("Invalid parameter: file_types contains unsupported value {$type}."),
         };
     }
 
@@ -267,11 +304,6 @@ final class StorageService extends AbstractService
 
         return str_ends_with(strtolower($sourceName), '.vmdk')
             && str_ends_with(strtolower($destinationName), '.vmdk');
-    }
-
-    private function optionalMor(mixed $value, string $type): ?Mor
-    {
-        return $value === null ? null : Mor::from($value, $type);
     }
 
     private function taskResult(Mor $task, bool $wait, array $data = []): array

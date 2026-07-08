@@ -104,17 +104,15 @@ $about = $client->auth()->session();
 
 ### 2.2 对象参数格式
 
-多个方法使用 `mixed $vm`、`mixed $host`、`mixed $datastore`、`mixed $task`。这些参数用于定位 ESXi 对象。
+多个方法使用 `mixed $vm`、`mixed $host`、`mixed $datastore`、`mixed $task`。对外调用建议使用简单值：名称、ID，或 SDK 查询方法返回的一行数据。
 
 #### VM 参数 `$vm`
 
 | 可传格式 | 示例 | 说明 |
 |---|---|---|
 | VM 名称 | `'Ubuntu18'` | SDK 会按名称查找虚拟机。 |
-| VM MoID | `'123'`、`'vm-123'` | 直接按 `VirtualMachine` MoRef 处理。 |
-| 带 `mor` 的行数据 | `$row` | 例如 `vps()->rows()` 返回的一行。 |
-| MoRef 数组 | `['type' => 'VirtualMachine', 'value' => '123']` | 显式传 ManagedObjectReference。 |
-| `ManagedObjectReference` 对象 | `$mor` | SDK 内部值对象。 |
+| VM ID | `'123'`、`'vm-123'` | 已知道 VM ID 时可直接传。 |
+| 查询返回行 | `$row` | 例如 `vps()->rows()` / `vps()->list()` 返回的一行数据。 |
 
 #### Host 参数 `$host`
 
@@ -122,8 +120,8 @@ $about = $client->auth()->session();
 |---|---|---|
 | `null` | `null` | 使用第一台 Host；单台 ESXi 通常就是当前宿主机。 |
 | Host 名称 | `'localhost.localdomain'` | 按名称查找。 |
-| 默认 Host MoID | `'ha-host'` | 单台 ESXi 常见 Host MoRef。 |
-| 带 `mor` 的行数据 / MoRef 数组 / MoRef 对象 | 同上 | 显式传 HostSystem 引用。 |
+| 默认 Host ID | `'ha-host'` | 单台 ESXi 常见默认 Host ID。 |
+| 查询返回行 | `$row` | 例如 `host()->list()` 返回的一行数据。 |
 
 #### Datastore 参数 `$datastore`
 
@@ -131,16 +129,15 @@ $about = $client->auth()->session();
 |---|---|---|
 | `null` | `null` | 使用第一个 Datastore。 |
 | Datastore 名称 | `'datastore1'` | 按名称查找。 |
-| Datastore MoID | `'datastore-12'` | 直接按 `Datastore` MoRef 处理。 |
-| 带 `mor` 的行数据 / MoRef 数组 / MoRef 对象 | 同上 | 显式传 Datastore 引用。 |
+| Datastore ID | `'datastore-12'` | 已知道 Datastore ID 时可直接传。 |
+| 查询返回行 | `$row` | 例如 `storage()->rows()` / `storage()->list()` 返回的一行数据。 |
 
 #### Task 参数 `$task`
 
 | 可传格式 | 示例 | 说明 |
 |---|---|---|
-| Task ID | `'haTask-1-vim.VirtualMachine.powerOn-123'` | 直接按 `Task` MoRef 处理。 |
-| MoRef 数组 | `['type' => 'Task', 'value' => 'haTask-xxx']` | 显式传 Task 引用。 |
-| `ManagedObjectReference` 对象 | `$mor` | SDK 内部值对象。 |
+| Task ID | `'haTask-1-vim.VirtualMachine.powerOn-123'` | 已知道 Task ID 时可直接传。 |
+| Task 数组 | `$result['task']` | 例如 `powerOn($vm, false)` 返回的 `task` 字段。 |
 
 ### 2.3 properties 属性路径
 
@@ -271,7 +268,7 @@ $result = $client->vps()->list([
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `mor` | `ManagedObjectReference` | ESXi 对象引用。 |
+| `mor` | `对象引用` | ESXi 对象引用。 |
 | `moid` | string | 对象 ID。 |
 | `type` | string | 对象类型，例如 `VirtualMachine`。 |
 | 其他属性路径 | mixed | 由 `properties` 参数决定，例如 `name`、`runtime.powerState`。 |
@@ -533,7 +530,7 @@ $client->host()->list(array $properties = []): array
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `0.mor` | `ManagedObjectReference` | HostSystem 引用。 |
+| `0.mor` | `对象引用` | HostSystem 引用。 |
 | `0.moid` | string | Host 对象 ID。 |
 | `0.type` | string | 固定为 `HostSystem`。 |
 | `0.<property>` | mixed | `properties` 指定的属性值。 |
@@ -933,7 +930,7 @@ $client->vps()->list(array $properties = []): array
 |---|---|---|
 | `success` | bool | 固定为 `true`。 |
 | `data` | array | VM 行数组。 |
-| `data.*.mor` | `ManagedObjectReference` | VM 引用。 |
+| `data.*.mor` | `对象引用` | VM 引用。 |
 | `data.*.moid` | string | VM 对象 ID。 |
 | `data.*.type` | string | 固定为 `VirtualMachine`。 |
 | `data.*.<property>` | mixed | 请求的 VM 属性。 |
@@ -953,7 +950,7 @@ $result = $client->vps()->list([
 
 #### 方法说明
 
-查询虚拟机原始列表，不包裹 `success/data`。适合 SDK 内部或需要直接使用 `mor` 的场景。
+查询虚拟机原始列表，不包裹 `success/data`。适合 SDK 内部或需要直接使用对象引用的场景。
 
 #### 请求
 
@@ -980,7 +977,7 @@ $vm = $rows[0] ?? null;
 
 #### 方法说明
 
-查询指定虚拟机信息。支持按 VM 名称、MoID、MoRef 定位。
+查询指定虚拟机信息。支持按 VM 名称、ID 定位。
 
 #### 请求
 
@@ -1017,7 +1014,7 @@ $client->vps()->info(mixed $vm, array $properties = []): array
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `success` | bool | 固定为 `true`。 |
-| `data.mor` | `ManagedObjectReference` | VM 引用。 |
+| `data.mor` | `对象引用` | VM 引用。 |
 | `data.moid` | string | VM 对象 ID。 |
 | `data.type` | string | 固定为 `VirtualMachine`。 |
 | `data.<property>` | mixed | 请求的 VM 属性。 |
@@ -1253,24 +1250,19 @@ $client->vps()->create(array $params, bool $wait = true): array
 | `params.network` | 是 | string | - | PortGroup 名称 | VM 网卡绑定的端口组。相同端口组通常处于同一二层网络。 |
 | `params.memory_mb` | 是 | int/string | - | 正整数 | VM 内存大小，单位 MB。 |
 | `params.num_cpus` | 是 | int/string | - | 正整数 | VM vCPU 数。 |
-| `params.disk_gb` | 新建磁盘必填；已有磁盘用于容量时必填其一 | int/string | - | 正整数 | 新建磁盘容量 GB；已有磁盘模式下也可用于换算 `capacityInKB`。 |
-| `params.capacity_kb` | 已有磁盘模式下与 `disk_gb` 二选一 | int/string | - | 正整数 | 磁盘容量 KB。 |
+| `params.disk_gb` | 是 | int/string | - | 正整数 | 磁盘容量，单位 GB；新建磁盘和使用已有 VMDK 时都需要传。 |
 | `params.use_existing_disk` | 否 | bool | `false` | `true` / `false` | 是否使用已有 VMDK。 |
 | `params.existing_disk` | 否 | bool | `false` | `true` / `false` | `use_existing_disk` 的兼容别名。 |
-| `params.disk_file_operation` | 否 | string/bool/null | `create` | `create`、`new`、`existing`、`use_existing`、`none`、`false`、`null` | 控制磁盘 fileOperation。`existing/use_existing/none/false/null` 表示使用已有磁盘。 |
 | `params.disk_path` | 已有磁盘必填；新建磁盘可选 | string | `[datastore] name/name.vmdk` | `[datastore1] vm/vm.vmdk` | VMDK datastore 路径。 |
 | `params.vm_path` | 否 | string | `[datastore] name/name.vmx` | `[datastore1] vm/vm.vmx` | VMX datastore 路径。 |
 | `params.guest_id` | 否 | string | `otherGuest64` | `ubuntu64Guest` 等 | ESXi GuestId。 |
 | `params.hardware_version` | 否 | string | - | `vmx-14` 等 | VM 硬件版本。 |
 | `params.vmx_version` | 否 | string | - | `vmx-14` 等 | `hardware_version` 别名。 |
 | `params.version` | 否 | string | - | `vmx-14` 等 | `hardware_version` 别名。 |
-| `params.scsi_controller` | 否 | string | `lsilogic` | `lsilogic`、`lsisas`、`buslogic`、`pvscsi` 或 VMware 原始类型名 | SCSI 控制器类型。 |
+| `params.scsi_controller` | 否 | string | `lsilogic` | `lsilogic`、`lsisas`、`buslogic`、`pvscsi` | SCSI 控制器类型。 |
 | `params.scsi_controller_type` | 否 | string | `lsilogic` | 同上 | `scsi_controller` 别名。 |
-| `params.adapter_type` | 否 | string | `vmxnet3` | `vmxnet3`、`e1000`、`e1000e` 或 VMware 原始类型名 | 网卡类型。 |
+| `params.adapter_type` | 否 | string | `vmxnet3` | `vmxnet3`、`e1000`、`e1000e` | 网卡类型。 |
 | `params.thin_provision` | 否 | bool | `true` | `true` / `false` | 新建磁盘是否精简置备；已有磁盘模式不设置。 |
-| `params.folder` | 否 | mixed | `ha-folder-vm` | Folder MoRef 格式 | VM Folder。单机 ESXi 默认即可。 |
-| `params.resource_pool` | 否 | mixed | `ha-root-pool` | ResourcePool MoRef 格式 | 资源池。单机 ESXi 默认即可。 |
-| `params.host` | 否 | mixed | `ha-host` | Host MoRef 格式 | 目标 Host。单机 ESXi 默认即可。 |
 | `wait` | 否 | bool | `true` | `true` / `false` | 是否等待创建任务完成。 |
 
 #### 返回说明
@@ -1349,7 +1341,7 @@ $client->vps()->resize('Ubuntu18', [
 
 #### 方法说明
 
-修改 VM 配置。支持修改 CPU、内存、扩容已有硬盘、添加硬盘、添加网卡。
+修改 VM 配置。支持修改 CPU、内存、扩容第一块硬盘、添加硬盘、添加网卡。所有容量参数都使用 GB 或 MB，不暴露 SOAP 的 `capacityInKB`、设备 key、控制器 key 等底层字段。
 
 #### 请求
 
@@ -1364,15 +1356,10 @@ $client->vps()->modifyConfig(mixed $vm, array $params, bool $wait = true): array
 | `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 要修改的 VM。 |
 | `params.num_cpus` | 否 | int/string | - | 正整数 | 修改 vCPU 数。 |
 | `params.cpu` | 否 | int/string | - | 正整数 | `num_cpus` 的别名。 |
-| `params.memory_mb` | 否 | int/string | - | 正整数 | 修改内存 MB。 |
-| `params.disk_gb` | 否 | int/string | - | 正整数 | 扩容已有硬盘到指定 GB。 |
+| `params.memory_mb` | 否 | int/string | - | 正整数 | 修改内存，单位 MB。 |
+| `params.disk_gb` | 否 | int/string | - | 正整数 | 扩容第一块硬盘到指定 GB。 |
 | `params.disk_size_gb` | 否 | int/string | - | 正整数 | `disk_gb` 的别名。 |
 | `params.capacity_gb` | 否 | int/string | - | 正整数 | `disk_gb` 的别名。 |
-| `params.capacity_kb` | 否 | int/string | - | 正整数 | 扩容已有硬盘到指定 KB。 |
-| `params.disk_key` | 否 | int/string | - | 虚拟磁盘 key | 指定要扩容的磁盘。 |
-| `params.key` | 否 | int/string | - | 虚拟磁盘 key | 指定要扩容的磁盘；也用于添加设备 key。 |
-| `params.controller_key` | 否 | int/string | - | 控制器 key | 和 `unit_number` 配合选择磁盘，或添加磁盘时指定控制器。 |
-| `params.unit_number` | 否 | int/string | 自动选择 | `0-15`，不能为 `7` | SCSI 单元号。 |
 | `params.add_disk` | 否 | array | - | 见下方添加硬盘参数 | 添加一个硬盘。 |
 | `params.add_disks` | 否 | array | - | 硬盘参数数组 | 添加多个硬盘。 |
 | `params.add_network` | 否 | array/string | - | 端口组名或网卡参数 | 添加一个网卡。 |
@@ -1383,29 +1370,22 @@ $client->vps()->modifyConfig(mixed $vm, array $params, bool $wait = true): array
 
 | 参数 | 是否必填 | 类型 | 默认值 | 说明 |
 |---|---:|---|---|---|
-| `disk_gb` / `size_gb` / `capacity_gb` | 新建磁盘必填 | int/string | - | 新磁盘容量 GB。 |
-| `capacity_kb` | 否 | int/string | - | 新磁盘容量 KB。 |
-| `use_existing_disk` / `existing_disk` / `disk_file_operation` | 否 | bool/string/null | `false` | 是否使用已有 VMDK。 |
-| `disk_path` | 使用已有磁盘必填；新建磁盘可选 | string | 自动生成 | VMDK datastore 路径。 |
-| `datastore` | 自动生成路径时必填其一 | string | - | 目标 Datastore。 |
-| `folder` | 否 | string | VM 名称 | 自动生成磁盘路径时使用的目录。 |
-| `disk_mode` | 否 | string | `persistent` | 磁盘模式。 |
+| `disk_gb` / `size_gb` / `capacity_gb` | 新建磁盘必填；使用已有磁盘也需要传 | int/string | - | 磁盘容量，单位 GB。 |
+| `use_existing_disk` / `existing_disk` | 否 | bool | `false` | 是否挂载 datastore 中已有 VMDK。 |
+| `disk_path` | 使用已有磁盘必填；新建磁盘可选 | string | 自动生成 | VMDK datastore 路径，例如 `[datastore1] vm/disk.vmdk`。 |
+| `datastore` | 自动生成路径时必填其一 | string | - | 目标 Datastore 名称。 |
+| `folder` | 否 | string | VM 名称 | 自动生成磁盘路径时使用的目录名。 |
 | `thin_provision` | 否 | bool | `true` | 新建磁盘是否精简置备。 |
-| `controller_key` | 否 | int/string | 第一个 SCSI 控制器 | 指定控制器。 |
-| `unit_number` | 否 | int/string | 自动选择 | SCSI 单元号，`0-15` 且不能为 `7`。 |
-| `key` | 否 | int | 自动负数 key | 设备 key。 |
 
 添加网卡参数：
 
 | 参数 | 是否必填 | 类型 | 默认值 | 说明 |
 |---|---:|---|---|---|
 | `network` / `port_group` / `name` | 是 | string | - | 端口组名称。 |
-| `adapter_type` | 否 | string | `vmxnet3` | `vmxnet3`、`e1000`、`e1000e` 或 VMware 原始类型名。 |
+| `adapter_type` | 否 | string | `vmxnet3` | 网卡类型：`vmxnet3`、`e1000`、`e1000e`。 |
 | `start_connected` | 否 | bool | `true` | 开机时连接。 |
 | `allow_guest_control` | 否 | bool | `true` | 是否允许 Guest 控制连接。 |
 | `connected` | 否 | bool | `true` | 当前是否连接。 |
-| `address_type` | 否 | string | `generated` | MAC 地址类型。 |
-| `key` | 否 | int | 自动负数 key | 设备 key。 |
 
 #### 返回说明
 
@@ -1417,10 +1397,11 @@ Task 方法返回，见 [Task 等待规则](#25-task-等待规则)。
 $client->vps()->modifyConfig('Ubuntu18', [
     'num_cpus' => 2,
     'memory_mb' => 2048,
-    'disk_gb' => 40,
+    'disk_gb' => 41,
     'add_disk' => [
+        'disk_gb' => 20,
         'datastore' => 'datastore1',
-        'disk_gb' => 100,
+        'folder' => 'Ubuntu18',
     ],
     'add_network' => [
         'network' => 'VPC-100',
@@ -1446,7 +1427,7 @@ $client->vps()->resizeDisk(mixed $vm, int|array $params, bool $wait = true): arr
 | 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
 |---|---:|---|---|---|---|
 | `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 要扩容的 VM。 |
-| `params` | 是 | int/array | - | `40` 或 `['disk_gb' => 40]` | 目标容量。数组可包含 `disk_key`、`controller_key`、`unit_number`。 |
+| `params` | 是 | int/array | - | `40` 或 `['disk_gb' => 40]` | 目标容量，单位 GB；数组只需要传 `disk_gb` / `disk_size_gb` / `capacity_gb`。 |
 | `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
 
 #### 返回说明
@@ -1514,7 +1495,6 @@ $client->vps()->addNetwork(mixed $vm, string $networkName, array $params = [], b
 | `params.start_connected` | 否 | bool | `true` | `true` / `false` | 开机时连接。 |
 | `params.allow_guest_control` | 否 | bool | `true` | `true` / `false` | 允许 Guest 控制。 |
 | `params.connected` | 否 | bool | `true` | `true` / `false` | 当前连接状态。 |
-| `params.address_type` | 否 | string | `generated` | `generated` 等 | MAC 地址类型。 |
 | `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
 
 #### 返回说明
@@ -1533,23 +1513,17 @@ $client->vps()->addNetwork('Ubuntu18', 'VPC-100', [
 
 #### 方法说明
 
-直接调用 ESXi `ReconfigVM_Task`，用于高级自定义配置。普通业务优先使用 `modifyConfig()`、`resizeDisk()`、`addDisk()`、`addNetwork()`。
+`reconfigure()` 是 `modifyConfig()` 的同规则别名，仍然只接收 SDK 封装后的简单参数，不接收 SOAP 原始配置对象。
 
 #### 请求
 
 ```php
-use Cwx1227\Esxi\Value\DataObject;
-
-$client->vps()->reconfigure(mixed $vm, array|DataObject $configSpec, bool $wait = true): array
+$client->vps()->reconfigure(mixed $vm, array $params, bool $wait = true): array
 ```
 
 #### 参数说明
 
-| 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
-|---|---:|---|---|---|---|
-| `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 目标 VM。 |
-| `configSpec` | 是 | array/`DataObject` | - | `VirtualMachineConfigSpec` 字段 | ESXi VM 配置规格。数组会自动包装成 `VirtualMachineConfigSpec`。 |
-| `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
+同 [`vps()->modifyConfig()`](#512-vps-modifyconfig)。
 
 #### 返回说明
 
@@ -1559,7 +1533,7 @@ Task 方法返回，见 [Task 等待规则](#25-task-等待规则)。
 
 ```php
 $client->vps()->reconfigure('Ubuntu18', [
-    'annotation' => 'created by sdk',
+    'memory_mb' => 2048,
 ]);
 ```
 
@@ -1786,7 +1760,7 @@ $client->vps()->destroy('Ubuntu18');
 
 #### 方法说明
 
-查询虚拟机网卡设备列表。只返回 `VirtualE1000`、`VirtualE1000e`、`VirtualVmxnet3` 类型设备。
+查询虚拟机网卡设备列表。返回 ESXi 识别到的虚拟网卡设备。
 
 #### 请求
 
@@ -1806,7 +1780,7 @@ $client->vps()->nics(mixed $vm): array
 |---|---|---|
 | `success` | bool | 固定为 `true`。 |
 | `data` | array | 网卡设备数组。 |
-| `data.*._xsi_type` | string | 网卡类型，例如 `VirtualVmxnet3`。 |
+| `data.*._xsi_type` | string | 网卡类型。 |
 | `data.*.key` | int | 设备 key。 |
 | `data.*.backing.deviceName` | string | 绑定的端口组名称。 |
 | `data.*.connectable` | array | 连接配置。 |
@@ -1836,11 +1810,10 @@ $client->vps()->setNetwork(mixed $vm, string $networkName, array $params = [], b
 |---|---:|---|---|---|---|
 | `vm` | 是 | mixed | - | 见 [VM 参数](#vm-参数-vm) | 目标 VM。 |
 | `networkName` | 是 | string | - | PortGroup 名称 | 目标端口组，不能为空。 |
-| `params.adapter_type` | 否 | string | 当前网卡类型或 `VirtualVmxnet3` | `vmxnet3`、`e1000`、`e1000e` 或 VMware 原始类型名 | 网卡类型。 |
+| `params.adapter_type` | 否 | string | 当前网卡类型 | `vmxnet3`、`e1000`、`e1000e` | 网卡类型。 |
 | `params.start_connected` | 否 | bool | `true` | `true` / `false` | 开机时连接。 |
 | `params.allow_guest_control` | 否 | bool | `true` | `true` / `false` | 允许 Guest 控制。 |
 | `params.connected` | 否 | bool | `true` | `true` / `false` | 当前连接状态。 |
-| `params.address_type` | 否 | string | `generated` | `generated` 等 | MAC 地址类型。 |
 | `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
 
 #### 返回说明
@@ -2072,7 +2045,7 @@ $client->network()->removeVirtualSwitch('vSwitchVPC');
 
 #### 方法说明
 
-创建端口组，可设置 VLAN ID、端口组安全策略、流量整形 / 带宽限制。VPS 创建或修改网络时传入该端口组名称即可绑定到该网络。
+创建端口组，可设置 VLAN ID、端口组安全策略和带宽限制。VPS 创建或修改网络时传入该端口组名称即可绑定到该网络。
 
 #### 请求
 
@@ -2090,13 +2063,9 @@ $client->network()->createPortGroup(array $params, mixed $host = null): array
 | `params.security.allow_promiscuous` | 否 | bool | 不设置 | `true` / `false` | 混杂模式。 |
 | `params.security.mac_changes` | 否 | bool | 不设置 | `true` / `false` | 是否允许 MAC 地址更改。 |
 | `params.security.forged_transmits` | 否 | bool | 不设置 | `true` / `false` | 是否允许伪传输。 |
-| `params.bandwidth_limit_bps` | 否 | int/string | 不设置 | 正整数 | 快捷限速参数，同时设置平均带宽和峰值带宽。 |
-| `params.burst_size` | 否 | int/string | `1048576` | 正整数 | 使用 `bandwidth_limit_bps` 时的突发大小。 |
-| `params.shaping.enabled` | 否 | bool | 不设置 | `true` / `false` | 是否启用流量整形。 |
-| `params.shaping.average_bandwidth` | 否 | int/string | 不设置 | 正整数 | 平均带宽 bps。 |
-| `params.shaping.peak_bandwidth` | 否 | int/string | 不设置 | 正整数 | 峰值带宽 bps。 |
-| `params.shaping.burst_size` | 否 | int/string | 不设置 | 正整数 | 突发大小。 |
-| `params.bandwidth` | 否 | array | - | 同 `shaping` | `shaping` 的别名。 |
+| `params.bandwidth_mbps` | 否 | int/string | 不设置 | 正整数 | 带宽限制，单位 Mbps。会同时设置平均带宽和峰值带宽。 |
+| `params.bandwidth_limit_mbps` | 否 | int/string | 不设置 | 正整数 | `bandwidth_mbps` 的别名。 |
+| `params.bandwidth_limit_bps` | 否 | int/string | 不设置 | 正整数 | 带宽限制，单位 bps；需要精确到 bps 时使用。 |
 | `host` | 否 | mixed | `null` | 见 [Host 参数](#host-参数-host) | 指定宿主机。 |
 
 #### 返回说明
@@ -2120,7 +2089,7 @@ $client->network()->createPortGroup([
         'mac_changes' => false,
         'forged_transmits' => false,
     ],
-    'bandwidth_limit_bps' => 100 * 1000 * 1000,
+    'bandwidth_mbps' => 100,
 ]);
 ```
 
@@ -2229,7 +2198,7 @@ $client->storage()->list(array $properties = []): array
 |---|---|---|
 | `success` | bool | 固定为 `true`。 |
 | `data` | array | Datastore 行数组。 |
-| `data.*.mor` | `ManagedObjectReference` | Datastore 引用。 |
+| `data.*.mor` | `对象引用` | Datastore 引用。 |
 | `data.*.<property>` | mixed | 请求的 Datastore 属性。 |
 
 #### 调用示例
@@ -2299,7 +2268,7 @@ $client->storage()->info(mixed $datastore, array $properties = []): array
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `success` | bool | 固定为 `true`。 |
-| `data.mor` | `ManagedObjectReference` | Datastore 引用。 |
+| `data.mor` | `对象引用` | Datastore 引用。 |
 | `data.<property>` | mixed | 请求的 Datastore 属性。 |
 
 #### 调用示例
@@ -2369,11 +2338,11 @@ $client->storage()->files(string $datastorePath, array $params = [], bool $wait 
 | `datastorePath` | 是 | string | - | `[datastore1] folder` | Datastore 路径，必须以 `[datastore]` 开头。 |
 | `params.datastore` | 否 | mixed | 从路径解析 | Datastore 参数 | 指定 Datastore，用于解析 browser。 |
 | `params.recursive` | 否 | bool | `false` | `true` / `false` | 是否递归搜索子目录。 |
-| `params.file_types` | 否 | array/string | 不过滤 | `folder`、`vm`、`vmconfig`、`config`、`disk`、`vmdk`、`log`、`iso`、`floppy` 或 VMware 原始 Query 类型 | 文件类型过滤。 |
-| `params.details.fileType` | 否 | bool | `true` | `true` / `false` | 是否返回文件类型。 |
-| `params.details.fileSize` | 否 | bool | `true` | `true` / `false` | 是否返回文件大小。 |
+| `params.file_types` | 否 | array/string | 不过滤 | `folder`、`vm`、`vmconfig`、`config`、`disk`、`vmdk`、`log`、`iso`、`floppy` | 文件类型过滤。 |
+| `params.details.file_type` | 否 | bool | `true` | `true` / `false` | 是否返回文件类型。 |
+| `params.details.file_size` | 否 | bool | `true` | `true` / `false` | 是否返回文件大小。 |
 | `params.details.modification` | 否 | bool | `true` | `true` / `false` | 是否返回修改时间。 |
-| `params.details.fileOwner` | 否 | bool | `false` | `true` / `false` | 是否返回文件所有者。 |
+| `params.details.file_owner` | 否 | bool | `false` | `true` / `false` | 是否返回文件所有者。 |
 | `params.search_case_insensitive` | 否 | bool | ESXi 默认 | `true` / `false` | 是否大小写不敏感。 |
 | `params.match_pattern` | 否 | array/string | 不过滤 | `['*.vmdk']` | 文件名匹配模式。 |
 | `params.sort_folders_first` | 否 | bool | `true` | `true` / `false` | 是否目录优先。 |
@@ -2426,10 +2395,6 @@ $client->storage()->copyFile(
 | `force` | 否 | bool | `false` | `true` / `false` | 目标存在时是否覆盖。 |
 | `wait` | 否 | bool | `true` | `true` / `false` | 是否等待 Task 完成。 |
 | `options.virtual_disk` | 否 | bool | 自动判断 | `true` / `false` | 是否按虚拟磁盘复制。传 `false` 可强制普通文件复制。 |
-| `options.source_datacenter` | 否 | mixed | `null` | Datacenter MoRef 格式 | 源 Datacenter。单台 ESXi 一般不传。 |
-| `options.destination_datacenter` | 否 | mixed | `null` | Datacenter MoRef 格式 | 目标 Datacenter。单台 ESXi 一般不传。 |
-| `options.destination_spec` | 否 | array/DataObject | `null` | `FileBackedVirtualDiskSpec` | VMDK 复制目标规格。 |
-| `options.dest_spec` | 否 | array/DataObject | `null` | 同上 | `destination_spec` 别名。 |
 
 #### 返回说明
 
@@ -2510,7 +2475,6 @@ $client->storage()->makeDirectory(
 |---|---:|---|---|---|---|
 | `name` | 是 | string | - | `[datastore1] vps-demo-001` | 要创建的 datastore 目录路径。 |
 | `createParentDirectories` | 否 | bool | `true` | `true` / `false` | 父目录不存在时是否一起创建。 |
-| `options.datacenter` | 否 | mixed | `null` | Datacenter MoRef 格式 | Datacenter，单台 ESXi 一般不传。 |
 
 #### 返回说明
 
@@ -2686,16 +2650,14 @@ $done = $client->task()->wait($created['task'], 300, 1000);
 #### 请求
 
 ```php
-use Cwx1227\Esxi\Value\ManagedObjectReference as Mor;
-
-$client->task()->rawInfo(Mor $task, array $properties = []): array
+$client->task()->rawInfo(mixed $task, array $properties = []): array
 ```
 
 #### 参数说明
 
 | 参数 | 是否必填 | 类型 | 默认值 | 可传值 / 格式 | 说明 |
 |---|---:|---|---|---|---|
-| `task` | 是 | `Mor` | - | `new Mor('Task', 'haTask-xxx')` | Task 引用对象。 |
+| `task` | 是 | mixed | - | Task ID 或 `$result['task']` | 要查询的 Task。 |
 | `properties` | 否 | array | 默认 Task 字段 | Task 属性路径数组 | 指定返回字段。 |
 
 #### 返回说明
@@ -2705,9 +2667,8 @@ $client->task()->rawInfo(Mor $task, array $properties = []): array
 #### 调用示例
 
 ```php
-use Cwx1227\Esxi\Value\ManagedObjectReference as Mor;
-
-$raw = $client->task()->rawInfo(new Mor('Task', 'haTask-xxx'), [
+$created = $client->vps()->powerOn('Ubuntu18', false);
+$raw = $client->task()->rawInfo($created['task'], [
     'info.key',
     'info.state',
 ]);

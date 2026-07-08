@@ -38,6 +38,8 @@ final class NetworkService extends AbstractService
 
     public function createVirtualSwitch(array $params, mixed $host = null): array
     {
+        $this->assertAllowedParams($params, ['name', 'num_ports', 'mtu', 'pnics']);
+
         foreach (['name'] as $required) {
             if (empty($params[$required])) {
                 throw new \InvalidArgumentException("Missing virtual switch parameter: {$required}");
@@ -66,6 +68,11 @@ final class NetworkService extends AbstractService
 
     public function removeVirtualSwitch(string $name, mixed $host = null): array
     {
+        $name = trim($name);
+        if ($name === '') {
+            throw new \InvalidArgumentException('Invalid parameter: name must be a non-empty string.');
+        }
+
         $this->client->removeVirtualSwitch->execute($this->client->hostNetworkSystem($host), $name);
 
         return $this->ok(['name' => $name]);
@@ -73,6 +80,8 @@ final class NetworkService extends AbstractService
 
     public function createPortGroup(array $params, mixed $host = null): array
     {
+        $this->assertPortGroupParams($params);
+
         foreach (['name', 'vswitch'] as $required) {
             if (empty($params[$required])) {
                 throw new \InvalidArgumentException("Missing port group parameter: {$required}");
@@ -94,6 +103,8 @@ final class NetworkService extends AbstractService
 
     public function updatePortGroup(array $params, mixed $host = null): array
     {
+        $this->assertPortGroupParams($params);
+
         foreach (['name', 'vswitch'] as $required) {
             if (empty($params[$required])) {
                 throw new \InvalidArgumentException("Missing port group parameter: {$required}");
@@ -117,6 +128,11 @@ final class NetworkService extends AbstractService
 
     public function removePortGroup(string $name, mixed $host = null): array
     {
+        $name = trim($name);
+        if ($name === '') {
+            throw new \InvalidArgumentException('Invalid parameter: name must be a non-empty string.');
+        }
+
         $this->client->removePortGroup->execute($this->client->hostNetworkSystem($host), $name);
 
         return $this->ok(['name' => $name]);
@@ -149,12 +165,15 @@ final class NetworkService extends AbstractService
             }
         }
 
-        $shaping = $params['shaping'] ?? $params['bandwidth'] ?? [];
-        if (isset($params['bandwidth_limit_bps'])) {
+        $shaping = [];
+        if (isset($params['bandwidth_mbps']) || isset($params['bandwidth_limit_mbps']) || isset($params['bandwidth_limit_bps'])) {
+            $bandwidthLimit = isset($params['bandwidth_limit_bps'])
+                ? $this->positiveInt($params['bandwidth_limit_bps'], 'bandwidth_limit_bps')
+                : $this->positiveInt($params['bandwidth_mbps'] ?? $params['bandwidth_limit_mbps'], 'bandwidth_mbps') * 1000 * 1000;
             $shaping['enabled'] = true;
-            $shaping['average_bandwidth'] = $this->positiveInt($params['bandwidth_limit_bps'], 'bandwidth_limit_bps');
-            $shaping['peak_bandwidth'] = $this->positiveInt($params['bandwidth_limit_bps'], 'bandwidth_limit_bps');
-            $shaping['burst_size'] = $this->positiveInt($params['burst_size'] ?? 1024 * 1024, 'burst_size');
+            $shaping['average_bandwidth'] = $bandwidthLimit;
+            $shaping['peak_bandwidth'] = $bandwidthLimit;
+            $shaping['burst_size'] = 1024 * 1024;
         }
 
         if ($shaping !== []) {
@@ -184,6 +203,36 @@ final class NetworkService extends AbstractService
             'vswitchName' => $vswitch,
             'policy' => DataObject::typed('HostNetworkPolicy', $policy),
         ]);
+    }
+
+    private function assertPortGroupParams(array $params): void
+    {
+        $this->assertAllowedParams($params, [
+            'name',
+            'vswitch',
+            'vlan_id',
+            'security',
+            'bandwidth_mbps',
+            'bandwidth_limit_mbps',
+            'bandwidth_limit_bps',
+        ]);
+
+        if (isset($params['security'])) {
+            if (!is_array($params['security'])) {
+                throw new \InvalidArgumentException('Invalid parameter: security must be an array.');
+            }
+            $this->assertAllowedParams($params['security'], [
+                'allow_promiscuous',
+                'mac_changes',
+                'forged_transmits',
+            ], 'security');
+        }
+
+        foreach (['bandwidth_mbps', 'bandwidth_limit_mbps', 'bandwidth_limit_bps'] as $key) {
+            if (isset($params[$key])) {
+                $this->positiveInt($params[$key], $key);
+            }
+        }
     }
 
     private function requiredString(array $params, string $key): string

@@ -16,6 +16,16 @@ final class LogService extends AbstractService
 
     public function browse(string $key = 'hostd', int $start = 0, int $lines = 200, mixed $host = null): array
     {
+        if (trim($key) === '') {
+            throw new \InvalidArgumentException('Invalid parameter: key must be a non-empty string.');
+        }
+        if ($start < 0) {
+            throw new \InvalidArgumentException('Invalid parameter: start must be zero or a positive integer.');
+        }
+        if ($lines <= 0) {
+            throw new \InvalidArgumentException('Invalid parameter: lines must be a positive integer.');
+        }
+
         return $this->ok($this->client->browseDiagnosticLog->execute(
             $this->client->service('diagnosticManager'),
             $key,
